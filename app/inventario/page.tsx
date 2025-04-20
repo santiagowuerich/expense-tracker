@@ -98,12 +98,28 @@ export default function InventarioPage() {
         );
       }
 
-      // Transform data to flatten the category name
-      return (data as ProductoRaw[] | null)?.map((producto) => ({
-        ...producto,
-        categoria_nombre: producto.categorias?.nombre || null,
-        categorias: undefined, // Remove the nested object
-      })) || [];
+      // Explicit type guard and transformation
+      const transformedData: Producto[] = [];
+      if (data) {
+        for (const p of data as any[]) { // Iterate as any first
+          let categoriaNombre: string | null = null;
+          if (p.categorias && typeof p.categorias === 'object' && 'nombre' in p.categorias) {
+            categoriaNombre = p.categorias.nombre;
+          }
+          transformedData.push({
+            id: String(p.id ?? ''), // Ensure string
+            nombre: String(p.nombre ?? ''), // Ensure string
+            sku: p.sku ? String(p.sku) : null,
+            stock: typeof p.stock === 'number' ? p.stock : 0, // Ensure number
+            stock_min: typeof p.stock_min === 'number' ? p.stock_min : 0, // Ensure number
+            costo_unit: typeof p.costo_unit === 'number' ? p.costo_unit : null,
+            precio_unit: typeof p.precio_unit === 'number' ? p.precio_unit : null,
+            categoria_id: p.categoria_id ? String(p.categoria_id) : null,
+            categoria_nombre: categoriaNombre,
+          });
+        }
+      }
+      return transformedData;
     },
   });
 
@@ -129,7 +145,8 @@ export default function InventarioPage() {
         );
       }
 
-      const currentStock = producto?.stock || 0;
+      // Ensure producto.stock is treated as a number
+      const currentStock = (typeof producto?.stock === 'number') ? producto.stock : 0;
       const nuevoStock = Math.max(0, currentStock + incremento);
 
       if (nuevoStock === currentStock) {
@@ -284,7 +301,7 @@ export default function InventarioPage() {
              */}
             <Button>
               <CreditCard className="mr-2 h-4 w-4" />
-              Registrar Egreso
+              Registrar Compra
             </Button>
           </CompraConTarjetaDialog>
           <AddProductDialog>
@@ -390,7 +407,7 @@ export default function InventarioPage() {
                             })
                           }
                           disabled={
-                            updateStockMutation.isLoading || producto.stock <= 0
+                            updateStockMutation.isPending || producto.stock <= 0
                           }
                         >
                           <MinusCircle className="h-4 w-4" />
@@ -404,7 +421,7 @@ export default function InventarioPage() {
                               incremento: 1,
                             })
                           }
-                          disabled={updateStockMutation.isLoading}
+                          disabled={updateStockMutation.isPending}
                         >
                           <PlusCircle className="h-4 w-4" />
                         </Button>

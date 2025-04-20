@@ -11,6 +11,7 @@ import { v4 as uuidv4 } from "uuid";
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase-browser"; // Asume que esto crea un cliente Supabase adecuado para el navegador
 import { queryClient } from "@/lib/queries";
+import { useToast } from "@/components/ui/use-toast";
 
 // UI Components
 import { Button } from "@/components/ui/button";
@@ -32,7 +33,8 @@ import { CalendarIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { useToast } from "@/components/ui/use-toast";
+import AddProductDialog from "@/components/add-product-dialog";
+import { PlusSquare } from "lucide-react";
 
 // --- Tipos Definidos ---
 type Tarjeta = {
@@ -117,10 +119,6 @@ export default function RegisterTransactionDialog({ children }: RegisterTransact
   const [isSubmitting, setIsSubmitting] = useState(false); // Estado para indicar si se está enviando
   const { toast } = useToast();
 
-  // --- Instancia del Cliente Supabase ---
-  // Es mejor instanciarlo una vez si es posible, aunque createClient del browser suele ser ligero
-  const supabase = createClient();
-
   // --- Formulario con Validación ---
   const form = useForm<TransactionFormValues>({
     resolver: zodResolver(transactionSchema),
@@ -137,6 +135,10 @@ export default function RegisterTransactionDialog({ children }: RegisterTransact
       cuotas: 2, // Default a 2 si 'en_cuotas' es true, aunque se controla en la UI
     },
   });
+
+  // Función helper para obtener el cliente (evita crearlo múltiples veces innecesariamente)
+  // Podría también ponerse en un useMemo si se llamara desde múltiples sitios en el render
+  const getSupabaseClient = () => createClient();
 
   // --- Observar Cambios en el Formulario ---
   const paymentMethod = form.watch("payment_method");
@@ -164,6 +166,7 @@ export default function RegisterTransactionDialog({ children }: RegisterTransact
   } = useQuery<Tarjeta[]>({ // Usar el tipo Tarjeta definido
     queryKey: ["tarjetas"],
     queryFn: async () => {
+      const supabase = getSupabaseClient(); // Obtener cliente aquí
       try {
         // No es necesario crear el cliente aquí si ya está fuera
         const { data, error } = await supabase.from("tarjetas").select("id, alias");
@@ -196,6 +199,7 @@ export default function RegisterTransactionDialog({ children }: RegisterTransact
   } = useQuery<Producto[], Error>({ // Usar el tipo Producto definido
     queryKey: ["productos"],
     queryFn: async () => {
+      const supabase = getSupabaseClient(); // Obtener cliente aquí
       try {
         // No es necesario crear el cliente aquí si ya está fuera
         const { data, error } = await supabase
@@ -239,6 +243,7 @@ export default function RegisterTransactionDialog({ children }: RegisterTransact
 
   // --- Manejador de Envío del Formulario ---
   const onSubmit = async (values: TransactionFormValues) => {
+    const supabase = getSupabaseClient(); // Obtener cliente aquí
     setIsSubmitting(true);
     try {
       // --- Validación de Stock ---
@@ -575,7 +580,16 @@ export default function RegisterTransactionDialog({ children }: RegisterTransact
                 name="producto_id"
                 render={({ field }) => (
                     <FormItem className="grid grid-cols-4 items-center gap-4">
-                    <FormLabel className="text-right">Producto</FormLabel>
+                    <FormLabel className="text-right flex items-center justify-end">
+                       Producto
+                       {/* Botón para agregar producto */}
+                       <AddProductDialog>
+                         <Button type="button" variant="ghost" size="icon" className="ml-1 h-6 w-6">
+                           <PlusSquare className="h-4 w-4" />
+                           <span className="sr-only">Agregar Producto</span>
+                         </Button>
+                       </AddProductDialog>
+                     </FormLabel>
                     <div className="col-span-3">
                         <Select
                            // Si field.value es undefined, usa NO_PRODUCT_VALUE para que coincida con el SelectItem

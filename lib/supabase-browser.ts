@@ -5,6 +5,11 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js"
 let client: ReturnType<typeof createSupabaseClient> | null = null
 
 export function createClient() {
+  // Asegurarse de que solo se ejecute en el navegador
+  if (typeof window === 'undefined') {
+    throw new Error('createClient (supabase-browser) solo debe llamarse en el lado del cliente.');
+  }
+
   if (client) return client
 
   // Usar las variables de entorno disponibles a través de process.env
@@ -17,9 +22,7 @@ export function createClient() {
   }
 
   client = createSupabaseClient(supabaseUrl, supabaseAnonKey, {
-    db: {
-      schema: "public",
-    },
+    // db: { schema: "public" } // Removido para evitar error de linter, 'public' es default
   })
 
   return client

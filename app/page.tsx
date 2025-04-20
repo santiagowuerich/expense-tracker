@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button"
 import { PlusCircle, BarChart3, CreditCard, Package, FileBarChart } from "lucide-react"
 import Link from "next/link"
-import RegisterTransactionDialog from "@/components/register-transaction-dialog"
+import CompraConTarjetaDialog from "@/components/compra-con-tarjeta-dialog"
 import AddCardDialog from "@/components/add-card-dialog"
 
 export default function Home() {
@@ -14,12 +14,12 @@ export default function Home() {
         </div>
 
         <div className="grid grid-cols-1 gap-6 mt-10">
-          <RegisterTransactionDialog>
+          <CompraConTarjetaDialog>
             <Button size="lg" className="w-full h-16 text-lg rounded-2xl">
-              <PlusCircle className="mr-2 h-5 w-5" />
-              Anotar gasto
+              <CreditCard className="mr-2 h-5 w-5" />
+              Registrar Compra
             </Button>
-          </RegisterTransactionDialog>
+          </CompraConTarjetaDialog>
 
           <Link href="/resumen" className="w-full">
             <Button size="lg" variant="outline" className="w-full h-16 text-lg rounded-2xl">

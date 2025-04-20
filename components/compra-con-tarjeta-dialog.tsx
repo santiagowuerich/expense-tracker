@@ -21,7 +21,10 @@ import { es } from "date-fns/locale"
 import { cn } from "@/lib/utils"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { v4 as uuidv4 } from "uuid"
+import AddProductDialog from "@/components/add-product-dialog"
+import { PlusSquare } from "lucide-react"
 
 type Tarjeta = {
   id: string
@@ -37,7 +40,10 @@ type Producto = {
 
 // Esquema de validación para el formulario de compras
 const compraSchema = z.object({
-  tarjeta_id: z.string().min(1, "Selecciona una tarjeta"),
+  payment_method: z.enum(["tarjeta", "efectivo", "transferencia"], {
+    required_error: "Selecciona un método de pago",
+  }),
+  tarjeta_id: z.string().optional(),
   producto_id: z.string().min(1, "Selecciona un producto"),
   cantidad: z.coerce.number().int().min(1, "La cantidad debe ser al menos 1"),
   costo_unit: z.coerce.number().positive("El costo debe ser mayor a 0"),
@@ -45,8 +51,24 @@ const compraSchema = z.object({
     required_error: "Selecciona una fecha",
   }),
   descripcion: z.string().optional(),
-  en_cuotas: z.boolean().default(false),
-  cuotas: z.coerce.number().int().min(1).default(1),
+  en_cuotas: z.boolean().default(false).optional(),
+  cuotas: z.coerce.number().int().min(1).default(1).optional(),
+}).refine((data) => {
+  if (data.payment_method === 'tarjeta') {
+    return !!data.tarjeta_id;
+  }
+  return true;
+}, {
+  message: "Debes seleccionar una tarjeta",
+  path: ["tarjeta_id"],
+}).refine((data) => {
+  if (data.payment_method === 'tarjeta' && data.en_cuotas) {
+    return data.cuotas && data.cuotas >= 2;
+  }
+  return true;
+}, {
+  message: "El número de cuotas debe ser al menos 2",
+  path: ["cuotas"],
 })
 
 type CompraFormValues = z.infer<typeof compraSchema>
@@ -64,6 +86,7 @@ export default function CompraConTarjetaDialog({ children }: CompraConTarjetaDia
   const form = useForm<CompraFormValues>({
     resolver: zodResolver(compraSchema),
     defaultValues: {
+      payment_method: "tarjeta",
       tarjeta_id: "",
       producto_id: "",
       cantidad: 1,
@@ -75,6 +98,7 @@ export default function CompraConTarjetaDialog({ children }: CompraConTarjetaDia
     },
   })
 
+  const paymentMethod = form.watch("payment_method")
   const enCuotas = form.watch("en_cuotas")
   const cuotas = form.watch("cuotas")
   const monto = form.watch("costo_unit")
@@ -101,7 +125,7 @@ export default function CompraConTarjetaDialog({ children }: CompraConTarjetaDia
           throw new Error(error.message)
         }
 
-        return data || []
+        return (data as Tarjeta[]) || []
       } catch (error: any) {
         console.error("Error al cargar tarjetas:", error)
         toast({
@@ -112,7 +136,7 @@ export default function CompraConTarjetaDialog({ children }: CompraConTarjetaDia
         return []
       }
     },
-    enabled: open, // Solo ejecutar la consulta cuando el modal está abierto
+    enabled: open,
   })
 
   // Consultar productos desde Supabase
@@ -131,13 +155,13 @@ export default function CompraConTarjetaDialog({ children }: CompraConTarjetaDia
           throw new Error(error.message)
         }
 
-        return data || []
+        return (data as Producto[]) || []
       } catch (error: any) {
         console.error("Error al cargar productos:", error)
         return []
       }
     },
-    enabled: open, // Solo ejecutar la consulta cuando el modal está abierto
+    enabled: open,
   })
 
   const onSubmit = async (values: CompraFormValues) => {
@@ -146,10 +170,13 @@ export default function CompraConTarjetaDialog({ children }: CompraConTarjetaDia
       // Generar un ID único para la compra
       const compraId = uuidv4()
 
-      // Buscar la tarjeta seleccionada
-      const tarjeta = tarjetas?.find((t) => t.id === values.tarjeta_id)
-      if (!tarjeta) {
-        throw new Error("Tarjeta no encontrada")
+      let tarjeta = null;
+      if(values.payment_method === 'tarjeta') {
+        // Buscar la tarjeta seleccionada
+        tarjeta = tarjetas?.find((t) => t.id === values.tarjeta_id)
+        if (!tarjeta) {
+          throw new Error("Tarjeta no encontrada")
+        }
       }
 
       const descripcion = values.descripcion || `Compra de inventario: ${
@@ -157,17 +184,17 @@ export default function CompraConTarjetaDialog({ children }: CompraConTarjetaDia
       } x ${values.cantidad}`;
 
       const transactionData = {
-        payment_method: "tarjeta",
-        tarjeta_id: values.tarjeta_id,
+        payment_method: values.payment_method,
+        tarjeta_id: values.payment_method === 'tarjeta' ? values.tarjeta_id : null,
         monto: values.costo_unit * values.cantidad,
         fecha: values.fecha.toISOString(),
         descripcion: descripcion,
         producto_id: values.producto_id,
         cantidad: values.cantidad,
-        en_cuotas: values.en_cuotas,
-        cuotas: values.cuotas,
+        en_cuotas: values.payment_method === 'tarjeta' ? (values.en_cuotas ?? false) : false,
+        cuotas: values.payment_method === 'tarjeta' && values.en_cuotas ? (values.cuotas ?? 1) : 1,
         payment_intent_id: compraId,
-        tipo_transaccion: "ingreso",
+        tipo_transaccion: "gasto",
       };
 
       // Enviar datos a la API
@@ -200,6 +227,7 @@ export default function CompraConTarjetaDialog({ children }: CompraConTarjetaDia
 
       // Limpiar el formulario
       form.reset({
+        payment_method: "tarjeta",
         tarjeta_id: "",
         producto_id: "",
         cantidad: 1,
@@ -236,7 +264,7 @@ export default function CompraConTarjetaDialog({ children }: CompraConTarjetaDia
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Compra con tarjeta</DialogTitle>
+          <DialogTitle>Registrar Compra</DialogTitle>
           <DialogDescription>Registra una compra de producto para el inventario.</DialogDescription>
         </DialogHeader>
 
@@ -244,37 +272,33 @@ export default function CompraConTarjetaDialog({ children }: CompraConTarjetaDia
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
             <FormField
               control={form.control}
-              name="tarjeta_id"
+              name="payment_method"
               render={({ field }) => (
                 <FormItem className="grid grid-cols-4 items-center gap-4">
-                  <FormLabel className="text-right">Tarjeta</FormLabel>
+                  <FormLabel className="text-right">Método</FormLabel>
                   <div className="col-span-3">
-                    <Select value={field.value} onValueChange={field.onChange}>
+                    <Select
+                      value={field.value}
+                      onValueChange={(value: "tarjeta" | "efectivo" | "transferencia") => {
+                        field.onChange(value);
+                        // Limpiar campos relacionados con tarjeta si no es tarjeta
+                        if (value !== "tarjeta") {
+                          form.setValue("tarjeta_id", undefined);
+                          form.setValue("en_cuotas", false);
+                          form.setValue("cuotas", 1);
+                          form.clearErrors("tarjeta_id");
+                        }
+                      }}
+                    >
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar tarjeta" />
+                          <SelectValue placeholder="Seleccionar método" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {isLoadingTarjetas ? (
-                          <SelectItem value="loading" disabled>
-                            Cargando tarjetas...
-                          </SelectItem>
-                        ) : errorTarjetas ? (
-                          <SelectItem value="error" disabled>
-                            Error al cargar tarjetas
-                          </SelectItem>
-                        ) : tarjetas && tarjetas.length > 0 ? (
-                          tarjetas.map((tarjeta) => (
-                            <SelectItem key={tarjeta.id} value={tarjeta.id}>
-                              {tarjeta.alias}
-                            </SelectItem>
-                          ))
-                        ) : (
-                          <SelectItem value="empty" disabled>
-                            No hay tarjetas disponibles
-                          </SelectItem>
-                        )}
+                        <SelectItem value="tarjeta">Tarjeta</SelectItem>
+                        <SelectItem value="efectivo">Efectivo</SelectItem>
+                        <SelectItem value="transferencia">Transferencia</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -283,12 +307,63 @@ export default function CompraConTarjetaDialog({ children }: CompraConTarjetaDia
               )}
             />
 
+            {paymentMethod === "tarjeta" && (
+              <FormField
+                control={form.control}
+                name="tarjeta_id"
+                render={({ field }) => (
+                  <FormItem className="grid grid-cols-4 items-center gap-4">
+                    <FormLabel className="text-right">Tarjeta</FormLabel>
+                    <div className="col-span-3">
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccionar tarjeta" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {isLoadingTarjetas ? (
+                            <SelectItem value="loading" disabled>
+                              Cargando tarjetas...
+                            </SelectItem>
+                          ) : errorTarjetas ? (
+                            <SelectItem value="error" disabled>
+                              Error al cargar tarjetas
+                            </SelectItem>
+                          ) : tarjetas && tarjetas.length > 0 ? (
+                            tarjetas.map((tarjeta) => (
+                              <SelectItem key={tarjeta.id} value={tarjeta.id}>
+                                {tarjeta.alias}
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <SelectItem value="empty" disabled>
+                              No hay tarjetas disponibles
+                            </SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </div>
+                  </FormItem>
+                )}
+              />
+            )}
+
             <FormField
               control={form.control}
               name="producto_id"
               render={({ field }) => (
                 <FormItem className="grid grid-cols-4 items-center gap-4">
-                  <FormLabel className="text-right">Producto</FormLabel>
+                  <FormLabel className="text-right flex items-center justify-end">
+                     Producto
+                     <AddProductDialog>
+                       <Button type="button" variant="ghost" size="icon" className="ml-1 h-6 w-6">
+                         <PlusSquare className="h-4 w-4" />
+                         <span className="sr-only">Agregar Producto</span>
+                       </Button>
+                     </AddProductDialog>
+                   </FormLabel>
                   <div className="col-span-3">
                     <Select value={field.value} onValueChange={field.onChange}>
                       <FormControl>
@@ -415,50 +490,54 @@ export default function CompraConTarjetaDialog({ children }: CompraConTarjetaDia
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="en_cuotas"
-              render={({ field }) => (
-                <FormItem className="grid grid-cols-4 items-center gap-4">
-                  <FormLabel className="text-right">En cuotas</FormLabel>
-                  <div className="flex items-center space-x-2 col-span-3">
-                    <FormControl>
-                      <Switch checked={field.value} onCheckedChange={field.onChange} />
-                    </FormControl>
-                    <FormDescription>Dividir el pago en cuotas mensuales</FormDescription>
-                  </div>
-                </FormItem>
-              )}
-            />
-
-            {enCuotas && (
+            {paymentMethod === "tarjeta" && (
               <>
                 <FormField
                   control={form.control}
-                  name="cuotas"
+                  name="en_cuotas"
                   render={({ field }) => (
                     <FormItem className="grid grid-cols-4 items-center gap-4">
-                      <FormLabel className="text-right">Número de cuotas</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min="2"
-                          max="48"
-                          className="col-span-3"
-                          {...field}
-                          value={field.value ?? ""}
-                          onChange={(e) => field.onChange(e.target.value === "" ? 2 : Number.parseInt(e.target.value))}
-                        />
-                      </FormControl>
-                      <FormMessage className="col-span-3 col-start-2" />
+                      <FormLabel className="text-right">En cuotas</FormLabel>
+                      <div className="flex items-center space-x-2 col-span-3">
+                        <FormControl>
+                          <Switch checked={field.value} onCheckedChange={field.onChange} />
+                        </FormControl>
+                        <FormDescription>Dividir el pago en cuotas mensuales</FormDescription>
+                      </div>
                     </FormItem>
                   )}
                 />
 
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <div className="text-right text-sm font-medium">Valor de cada cuota</div>
-                  <div className="col-span-3 text-lg font-semibold">${montoPorCuota}</div>
-                </div>
+                {enCuotas && (
+                  <>
+                    <FormField
+                      control={form.control}
+                      name="cuotas"
+                      render={({ field }) => (
+                        <FormItem className="grid grid-cols-4 items-center gap-4">
+                          <FormLabel className="text-right">Número de cuotas</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min="2"
+                              max="48"
+                              className="col-span-3"
+                              {...field}
+                              value={field.value ?? ""}
+                              onChange={(e) => field.onChange(e.target.value === "" ? 2 : Number.parseInt(e.target.value))}
+                            />
+                          </FormControl>
+                          <FormMessage className="col-span-3 col-start-2" />
+                        </FormItem>
+                      )}
+                    />
+
+                    <div className="grid grid-cols-4 items-center gap-4">
+                      <div className="text-right text-sm font-medium">Valor de cada cuota</div>
+                      <div className="col-span-3 text-lg font-semibold">${montoPorCuota}</div>
+                    </div>
+                  </>
+                )}
               </>
             )}
 

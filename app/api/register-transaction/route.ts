@@ -78,37 +78,110 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Tipo de transacción inválido" }, { status: 400 })
     }
 
+    let compraIdRegistrada: string | null = null; // Declarar fuera del if
+
     // Manejo del stock según el tipo de transacción
     if (producto_id && cantidad > 0) {
       if (tipo_transaccion === 'gasto') {
-        // Verificar stock para gasto (solo para pago con tarjeta)
-        if (payment_method === 'tarjeta') {
-          const { data: producto, error: productoError } = await supabase
-            .from('productos')
-            .select('stock')
-            .eq('id', producto_id)
-            .single();
+        // --- Lógica para GASTO con PRODUCTO_ID (Compra de Inventario) ---
 
-          if (productoError) {
-            return NextResponse.json({ error: 'Error al verificar el producto' }, { status: 500 });
-          }
+        // 1. Incrementar Stock en la tabla 'productos'
+        const { data: productoActual, error: productoError } = await supabase
+          .from('productos')
+          .select('stock')
+          .eq('id', producto_id)
+          .single();
 
-          if (!producto || producto.stock < cantidad) {
-            return NextResponse.json({ error: 'Stock insuficiente para este producto' }, { status: 400 });
+        if (productoError) {
+          return NextResponse.json({ error: 'Error al obtener el producto para actualizar stock' }, { status: 500 });
+        }
+
+        if (!productoActual) {
+          // Si el producto no existe, ¿debería crearse o fallar? Por ahora falla.
+          return NextResponse.json({ error: 'Producto no encontrado para actualizar stock' }, { status: 404 });
+        }
+
+        const stockActual = productoActual.stock || 0;
+        const nuevoStock = stockActual + cantidad;
+
+        const { error: updateError } = await supabase
+          .from('productos')
+          .update({ stock: nuevoStock })
+          .eq('id', producto_id);
+
+        if (updateError) {
+          // Si falla la actualización de stock, podríamos querer revertir o loggear, pero continuar para registrar el pago
+          console.error("Error al actualizar stock en compra:", updateError);
+          // Considerar si devolver un error aquí o solo loggear
+        }
+
+        // 2. Registrar en la tabla 'compras' (Lógica añadida previamente, se mantiene)
+        const costoUnitarioCompra = monto / cantidad;
+        const { data: compraData, error: compraError } = await supabase
+          .from('compras')
+          .insert({
+            producto_id: producto_id,
+            costo_unit: costoUnitarioCompra,
+            cantidad: cantidad,
+            restante: cantidad, // Inicialmente, la cantidad restante es la cantidad comprada
+          })
+          .select('id')
+          .single();
+
+        if (compraError) {
+          console.error("Error al registrar la compra en tabla 'compras':", compraError);
+          // No detener la transacción principal por esto, pero loggear
+        }
+        // (Opcional: registrar historial de precios si es necesario)
+
+        // Registrar en historial de precios si la compra se registró correctamente
+        if (compraData) {
+          const { error: historyError } = await supabase
+            .from("price_history")
+            .insert({
+              producto_id: producto_id,
+              tipo: "costo", // Indicar que es un precio de costo
+              precio: costoUnitarioCompra,
+              compra_id: compraData.id, // Vincular al registro de compra
+            });
+
+          if (historyError) {
+            console.error("Error al registrar historial de precios:", historyError);
+            // No detener la transacción principal, pero loggear el error
           }
         }
 
-        // Descontar stock usando lógica LIFO
-        try {
-          await descontarStock(supabase, producto_id, cantidad);
-        } catch (error: any) {
-          return NextResponse.json({ error: error.message || 'Error al descontar stock' }, { status: 500 });
-        }
+        // Asignar el ID si la inserción fue exitosa
+        compraIdRegistrada = compraData ? compraData.id : null;
+
       } else if (tipo_transaccion === 'ingreso') {
+        // --- Lógica para INGRESO con PRODUCTO_ID (Ajuste manual de stock, NO compra) ---
+        // Esta lógica podría necesitar revisión. ¿Realmente hay un caso de uso para "ingreso" con producto aquí?
+        // Si esto fuera un ajuste manual, probablemente no involucraría un pago.
+        // Por ahora, se mantiene la lógica original de solo incrementar stock.
+
+        // Obtener el producto actual para calcular el nuevo stock
+        const { data: productoActual, error: productoError } = await supabase
+          .from('productos')
+          .select('stock')
+          .eq('id', producto_id)
+          .single();
+
+        if (productoError) {
+          return NextResponse.json({ error: 'Error al obtener el producto para actualizar stock' }, { status: 500 });
+        }
+
+        if (!productoActual) {
+          return NextResponse.json({ error: 'Producto no encontrado para actualizar stock' }, { status: 404 });
+        }
+
+        const stockActual = productoActual.stock || 0;
+        const nuevoStock = stockActual + cantidad;
+
         // Agregar stock directamente a la tabla de productos
         const { error: updateError } = await supabase
           .from('productos')
-          .update({ stock: producto.stock + cantidad })
+          .update({ stock: nuevoStock })
           .eq('id', producto_id);
 
         if (updateError) {
@@ -152,6 +225,7 @@ export async function POST(request: Request) {
       producto_id: producto_id || null,
       payment_intent_id,
       payment_method,
+      // compra_id se añadirá específicamente si viene de una compra
     }
 
     if (!esEnCuotas) {
@@ -164,6 +238,7 @@ export async function POST(request: Request) {
         cuotas: 1,
         cuota_actual: 1,
         es_cuota: false,
+        compra_id: compraIdRegistrada
       })
 
       if (pagoError) {
@@ -188,8 +263,9 @@ export async function POST(request: Request) {
           cuotas,
           cuota_actual: numeroCuota,
           es_cuota: true,
-          pago_original_id: null, // No necesitamos esto ya que no guardamos el total
+          pago_original_id: null,
           payment_intent_id: `${payment_intent_id}-cuota-${numeroCuota}`,
+          compra_id: compraIdRegistrada
         }
       })
 
