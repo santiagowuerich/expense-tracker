@@ -1,201 +1,270 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { useQuery } from "@tanstack/react-query"
-import { ArrowLeft, Plus, MinusCircle, PlusCircle, AlertTriangle, CreditCard } from "lucide-react"
-import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase-browser"
+import { useState, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"; // Import useMutation and useQueryClient
+import {
+  ArrowLeft,
+  Plus,
+  MinusCircle,
+  PlusCircle,
+  AlertTriangle,
+  CreditCard,
+} from "lucide-react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase-browser";
 
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Skeleton } from "@/components/ui/skeleton"
-import { EmptyState } from "@/components/empty-state"
-import AddProductDialog from "@/components/add-product-dialog"
-import EditProductDialog from "@/components/edit-product-dialog"
-import ProductPurchasesDialog from "@/components/product-purchases-dialog"
-import CompraConTarjetaDialog from "@/components/compra-con-tarjeta-dialog"
-import { useToast } from "@/components/ui/use-toast"
-import { queryClient } from "@/lib/queries"
-import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/empty-state";
+import AddProductDialog from "@/components/add-product-dialog";
+import EditProductDialog from "@/components/edit-product-dialog";
+import ProductPurchasesDialog from "@/components/product-purchases-dialog";
+import CompraConTarjetaDialog from "@/components/compra-con-tarjeta-dialog";
+import { useToast } from "@/components/ui/use-toast";
+// import { queryClient } from "@/lib/queries"; // queryClient already available via useQueryClient
+import { Badge } from "@/components/ui/badge";
+// import { v4 as uuidv4 } from "uuid"; // Not needed here anymore
 
+// Define the type for the product data received from Supabase
+type ProductoRaw = {
+  id: string;
+  nombre: string;
+  sku: string | null;
+  stock: number;
+  stock_min: number;
+  costo_unit: number | null;
+  precio_unit: number | null;
+  categoria_id: string | null;
+  categorias?: { nombre: string | null } | null; // Supabase join structure
+};
+
+// Define the type for the product data after transformation
 type Producto = {
-  id: string
-  nombre: string
-  sku: string | null
-  stock: number
-  stock_min: number
-  costo_unit: number | null
-  precio_unit: number | null
-  categoria_id: string | null
-  categoria_nombre?: string
-}
+  id: string;
+  nombre: string;
+  sku: string | null;
+  stock: number;
+  stock_min: number;
+  costo_unit: number | null;
+  precio_unit: number | null;
+  categoria_id: string | null;
+  categoria_nombre: string | null; // Flattened category name
+};
 
 export default function InventarioPage() {
-  const router = useRouter()
-  const { toast } = useToast()
-  const [isUpdating, setIsUpdating] = useState<string | null>(null)
-  const [stockBajoAlertado, setStockBajoAlertado] = useState(false)
+  const router = useRouter();
+  const { toast } = useToast();
+  const queryClient = useQueryClient(); // Get queryClient instance
+  const [stockBajoAlertado, setStockBajoAlertado] = useState(false);
 
+  // Fetch products using react-query
   const {
     data: productos,
     isLoading,
     error,
-  } = useQuery<Producto[]>({
+  } = useQuery<Producto[], Error>({
     queryKey: ["productos"],
     queryFn: async () => {
-      try {
-        const supabase = createClient()
-        const { data, error } = await supabase
-          .from("productos")
-          .select(`
-            id, nombre, sku, stock, stock_min, costo_unit, precio_unit, categoria_id,
-            categorias (nombre)
-          `)
-          .order("nombre")
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("productos")
+        .select(
+          `
+          id, nombre, sku, stock, stock_min, costo_unit, precio_unit, categoria_id,
+          categorias (nombre)
+        `
+        )
+        .order("nombre");
 
-        if (error) {
-          throw new Error(error.message)
+      if (error) {
+        console.error("Error fetching products:", error.message);
+        throw new Error(
+          `Error al cargar productos: ${error.message || "Desconocido"}`
+        );
+      }
+
+      // Transform data to flatten the category name
+      return (data as ProductoRaw[] | null)?.map((producto) => ({
+        ...producto,
+        categoria_nombre: producto.categorias?.nombre || null,
+        categorias: undefined, // Remove the nested object
+      })) || [];
+    },
+  });
+
+  // Mutation for updating stock
+  const updateStockMutation = useMutation<
+    void, // Expected return type on success
+    Error, // Expected error type
+    { productoId: string; incremento: number } // Variables type
+  >({
+    mutationFn: async ({ productoId, incremento }) => {
+      const supabase = createClient();
+
+      // 1. Get current stock and cost
+      const { data: producto, error: fetchError } = await supabase
+        .from("productos")
+        .select("stock, costo_unit")
+        .eq("id", productoId)
+        .single();
+
+      if (fetchError) {
+        throw new Error(
+          `Error fetching product for update: ${fetchError.message}`
+        );
+      }
+
+      const currentStock = producto?.stock || 0;
+      const nuevoStock = Math.max(0, currentStock + incremento);
+
+      if (nuevoStock === currentStock) {
+        // No change needed
+        return;
+      }
+
+      // 2. Update stock
+      const { error: updateError } = await supabase
+        .from("productos")
+        .update({ stock: nuevoStock })
+        .eq("id", productoId);
+
+      if (updateError) {
+        throw new Error(`Error updating stock: ${updateError.message}`);
+      }
+
+      // 3. If incrementing, record purchase/history
+      if (incremento > 0) {
+        const costoUnitario = producto?.costo_unit || 0;
+
+        try {
+          // Check if 'compras' table exists and record purchase if it does
+          const { error: checkError } = await supabase
+            .from("compras")
+            .select("*", { count: "exact", head: true });
+
+          if (
+            checkError &&
+            checkError.message.includes("relation") &&
+            checkError.message.includes("does not exist")
+          ) {
+            console.warn("Table 'compras' does not exist. Purchase not logged.");
+          } else if (checkError) {
+            // Some other error checking the table
+             console.error("Error checking 'compras' table:", checkError.message);
+          }
+           else {
+            // Table exists, attempt to insert purchase
+            const { data: compra, error: compraError } = await supabase
+              .from("compras")
+              .insert({
+                producto_id: productoId,
+                costo_unit: costoUnitario,
+                cantidad: incremento,
+                restante: incremento, // Assuming remaining quantity is the same as purchased initially
+              })
+              .select()
+              .single(); // Use single() if inserting one row and expecting one back
+
+            if (compraError) {
+              console.error("Error logging purchase:", compraError.message);
+            } else {
+              // Log price history
+              const { error: historyError } = await supabase
+                .from("price_history")
+                .insert({
+                  producto_id: productoId,
+                  tipo: "costo", // Assuming 'costo' is the type for purchase price
+                  precio: costoUnitario,
+                  // Ensure compra.id exists before using it
+                  compra_id: compra ? compra.id : null,
+                });
+
+              if (historyError) {
+                console.error(
+                  "Error logging price history:",
+                  historyError.message
+                );
+              }
+            }
+          }
+        } catch (logError: any) {
+           console.error("Unexpected error during purchase logging:", logError.message);
         }
-
-        // Transformar los datos para incluir el nombre de la categoría
-        return (data || []).map((producto) => ({
-          ...producto,
-          categoria_nombre: producto.categorias ? producto.categorias.nombre : null,
-          categorias: undefined, // Eliminar el objeto anidado
-        }))
-      } catch (error: any) {
-        console.error("Error al cargar productos:", error)
-        return []
       }
     },
-  })
+    onSuccess: (_, variables) => {
+      // Invalidate the 'productos' query to refetch data after successful update
+      queryClient.invalidateQueries({ queryKey: ["productos"] });
+      const updatedProduct = productos?.find(
+        (p) => p.id === variables.productoId
+      );
+      const newStock = Math.max(
+        0,
+        (updatedProduct?.stock || 0) + variables.incremento
+      ); // Calculate anticipated new stock for toast
 
-  // Verificar si hay productos con stock bajo y mostrar alerta
+      toast({
+        title: "Stock actualizado",
+        description: `El stock ha sido actualizado a ${newStock} unidades.`,
+      });
+    },
+    onError: (err) => {
+      toast({
+        title: "Error al actualizar stock",
+        description: err.message || "Ocurrió un error desconocido.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Verify if there are products with low stock and show alert
   useEffect(() => {
     if (productos && !stockBajoAlertado) {
-      const productosBajoStock = productos.filter((p) => p.stock_min > 0 && p.stock <= p.stock_min)
+      const productosBajoStock = productos.filter(
+        (p) => p.stock_min > 0 && p.stock <= p.stock_min
+      );
 
       if (productosBajoStock.length > 0) {
         toast({
           title: "Stock bajo",
           description: `Hay ${productosBajoStock.length} producto(s) con stock por debajo del mínimo.`,
           variant: "destructive",
-        })
-        setStockBajoAlertado(true)
+        });
+        setStockBajoAlertado(true); // Set flag to true after showing the alert
       }
     }
-  }, [productos, toast, stockBajoAlertado])
+  }, [productos, toast, stockBajoAlertado]); // Added stockBajoAlertado to dependency array
 
-  const actualizarStock = async (productoId: string, incremento: number) => {
-    if (isUpdating) return
-
-    setIsUpdating(productoId)
-    try {
-      const supabase = createClient()
-
-      // Primero obtenemos el stock actual y el costo unitario
-      const { data: producto, error: errorConsulta } = await supabase
-        .from("productos")
-        .select("stock, costo_unit")
-        .eq("id", productoId)
-        .single()
-
-      if (errorConsulta) {
-        throw new Error(errorConsulta.message)
-      }
-
-      const nuevoStock = Math.max(0, (producto.stock || 0) + incremento)
-
-      // Actualizar el stock del producto
-      const { error: errorActualizacion } = await supabase
-        .from("productos")
-        .update({ stock: nuevoStock })
-        .eq("id", productoId)
-
-      if (errorActualizacion) {
-        throw new Error(errorActualizacion.message)
-      }
-
-      // Si estamos incrementando el stock, registrar una nueva compra
-      if (incremento > 0) {
-        const costoUnitario = producto.costo_unit || 0
-
-        try {
-          // Verificar si la tabla compras existe
-          const { count, error: errorVerificacion } = await supabase
-            .from("compras")
-            .select("*", { count: "exact", head: true })
-
-          // Si hay un error específico de "relation does not exist", la tabla no existe
-          if (
-            errorVerificacion &&
-            errorVerificacion.message.includes("relation") &&
-            errorVerificacion.message.includes("does not exist")
-          ) {
-            console.warn("La tabla compras no existe. No se registrará la compra.")
-          } else {
-            // Registrar la compra solo si la tabla existe
-            const { data: compra, error: errorCompra } = await supabase
-              .from("compras")
-              .insert({
-                producto_id: productoId,
-                costo_unit: costoUnitario,
-                cantidad: incremento,
-                restante: incremento,
-              })
-              .select()
-
-            if (errorCompra) {
-              console.error("Error al registrar la compra:", errorCompra)
-            } else {
-              // Registrar en historial de precios
-              const { error: historyError } = await supabase.from("price_history").insert({
-                producto_id: productoId,
-                tipo: "costo",
-                precio: costoUnitario,
-                compra_id: compra ? compra[0].id : null,
-              })
-
-              if (historyError) {
-                console.error("Error al registrar historial de precios:", historyError)
-              }
-            }
-          }
-        } catch (error) {
-          console.error("Error al verificar la tabla compras:", error)
-        }
-      }
-
-      // Actualizar la caché de React Query
-      queryClient.invalidateQueries({ queryKey: ["productos"] })
-
-      toast({
-        title: "Stock actualizado",
-        description: `El stock ha sido actualizado a ${nuevoStock} unidades.`,
-      })
-    } catch (error: any) {
-      console.error("Error al actualizar stock:", error)
-      toast({
-        title: "Error",
-        description: error.message || "No se pudo actualizar el stock",
-        variant: "destructive",
-      })
-    } finally {
-      setIsUpdating(null)
-    }
-  }
-
-  // Función para determinar si un producto tiene stock crítico
+  // Function to determine if a product has critical stock
   const tieneStockCritico = (producto: Producto) => {
-    return producto.stock_min > 0 && producto.stock <= producto.stock_min
-  }
+    return producto.stock_min > 0 && producto.stock <= producto.stock_min;
+  };
 
   return (
     <div className="container mx-auto py-8 px-4">
       <div className="flex items-center justify-between mb-8">
         <div className="flex items-center">
-          <Button variant="ghost" size="sm" onClick={() => router.push("/")} className="mr-4">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => router.push("/")}
+            className="mr-4"
+          >
             <ArrowLeft className="mr-2 h-4 w-4" />
             Volver
           </Button>
@@ -206,10 +275,16 @@ export default function InventarioPage() {
             <AlertTriangle className="mr-2 h-4 w-4" />
             Ver reportes
           </Button>
+          {/* Assuming CompraConTarjetaDialog is for recording purchases/expenses */}
           <CompraConTarjetaDialog>
+             {/* The purpose of this dialog button is unclear in the context of "Inventario".
+                 If it's for recording expenses related to inventory purchases,
+                 it might be better placed contextually. Leaving it as is for now
+                 but note the potential confusion.
+             */}
             <Button>
               <CreditCard className="mr-2 h-4 w-4" />
-              Comprar con Tarjeta
+              Registrar Egreso
             </Button>
           </CompraConTarjetaDialog>
           <AddProductDialog>
@@ -229,7 +304,9 @@ export default function InventarioPage() {
         <Card className="rounded-2xl shadow-sm">
           <CardHeader>
             <CardTitle className="text-destructive">Error</CardTitle>
-            <CardDescription>Ocurrió un error al cargar el inventario. Por favor, intenta nuevamente.</CardDescription>
+            <CardDescription>
+              Ocurrió un error al cargar el inventario: {error.message}
+            </CardDescription>
           </CardHeader>
         </Card>
       ) : !productos || productos.length === 0 ? (
@@ -264,40 +341,78 @@ export default function InventarioPage() {
               </TableHeader>
               <TableBody>
                 {productos.map((producto) => (
-                  <TableRow key={producto.id} className={tieneStockCritico(producto) ? "bg-red-50 text-red-600" : ""}>
-                    <TableCell className="font-medium">{producto.nombre}</TableCell>
+                  <TableRow
+                    key={producto.id}
+                    className={
+                      tieneStockCritico(producto)
+                        ? "bg-red-50 text-red-600"
+                        : ""
+                    }
+                  >
+                    <TableCell className="font-medium">
+                      {producto.nombre}
+                    </TableCell>
                     <TableCell>
-                      {producto.categoria_nombre ? <Badge variant="outline">{producto.categoria_nombre}</Badge> : "-"}
+                      {producto.categoria_nombre ? (
+                        <Badge variant="outline">
+                          {producto.categoria_nombre}
+                        </Badge>
+                      ) : (
+                        "-"
+                      )}
                     </TableCell>
                     <TableCell>{producto.sku || "-"}</TableCell>
-                    <TableCell className="text-center">{producto.stock}</TableCell>
-                    <TableCell className="text-center">{producto.stock_min}</TableCell>
-                    <TableCell className="text-right">
-                      {producto.costo_unit ? `$${producto.costo_unit.toFixed(2)}` : "-"}
+                    <TableCell className="text-center">
+                      {producto.stock}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {producto.stock_min}
                     </TableCell>
                     <TableCell className="text-right">
-                      {producto.precio_unit ? `$${producto.precio_unit.toFixed(2)}` : "-"}
+                      {producto.costo_unit
+                        ? `$${producto.costo_unit.toFixed(2)}`
+                        : "-"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {producto.precio_unit
+                        ? `$${producto.precio_unit.toFixed(2)}`
+                        : "-"}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center justify-center space-x-2">
                         <Button
                           variant="outline"
                           size="icon"
-                          onClick={() => actualizarStock(producto.id, -1)}
-                          disabled={isUpdating === producto.id || producto.stock <= 0}
+                          onClick={() =>
+                            updateStockMutation.mutate({
+                              productoId: producto.id,
+                              incremento: -1,
+                            })
+                          }
+                          disabled={
+                            updateStockMutation.isLoading || producto.stock <= 0
+                          }
                         >
                           <MinusCircle className="h-4 w-4" />
                         </Button>
                         <Button
                           variant="outline"
                           size="icon"
-                          onClick={() => actualizarStock(producto.id, 1)}
-                          disabled={isUpdating === producto.id}
+                          onClick={() =>
+                            updateStockMutation.mutate({
+                              productoId: producto.id,
+                              incremento: 1,
+                            })
+                          }
+                          disabled={updateStockMutation.isLoading}
                         >
                           <PlusCircle className="h-4 w-4" />
                         </Button>
                         <EditProductDialog producto={producto} />
-                        <ProductPurchasesDialog productoId={producto.id} productoNombre={producto.nombre} />
+                        <ProductPurchasesDialog
+                          productoId={producto.id}
+                          productoNombre={producto.nombre}
+                        />
                       </div>
                     </TableCell>
                   </TableRow>
@@ -308,5 +423,5 @@ export default function InventarioPage() {
         </Card>
       )}
     </div>
-  )
+  );
 }

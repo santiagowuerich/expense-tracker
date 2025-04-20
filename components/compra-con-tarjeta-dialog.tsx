@@ -1,21 +1,12 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { z } from "zod"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { useToast } from "@/components/ui/use-toast"
@@ -24,7 +15,6 @@ import { queryClient } from "@/lib/queries"
 import { useQuery } from "@tanstack/react-query"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Calendar } from "@/components/ui/calendar"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { CalendarIcon } from "lucide-react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
@@ -162,39 +152,36 @@ export default function CompraConTarjetaDialog({ children }: CompraConTarjetaDia
         throw new Error("Tarjeta no encontrada")
       }
 
-      // Calcular el ciclo de cierre correctamente
-      const fechaGasto = values.fecha
-      const corteActual = new Date(fechaGasto.getFullYear(), fechaGasto.getMonth(), tarjeta.cierre_dia)
+      const descripcion = values.descripcion || `Compra de inventario: ${
+        productos?.find((p) => p.id === values.producto_id)?.nombre || "Producto"
+      } x ${values.cantidad}`;
 
-      // Si la fecha del gasto es posterior al cierre actual, el ciclo es el del mes siguiente
-      const ciclo_cierre =
-        fechaGasto > corteActual
-          ? new Date(corteActual.getFullYear(), corteActual.getMonth() + 1, corteActual.getDate())
-          : corteActual
-
-      // Preparar datos para la API
-      const compraData = {
-        id: compraId,
+      const transactionData = {
+        payment_method: "tarjeta",
+        tarjeta_id: values.tarjeta_id,
+        monto: values.costo_unit * values.cantidad,
+        fecha: values.fecha.toISOString(),
+        descripcion: descripcion,
         producto_id: values.producto_id,
         cantidad: values.cantidad,
-        costo_unit: values.costo_unit,
-        tarjeta_id: values.tarjeta_id,
-        fecha: values.fecha.toISOString(),
-        descripcion: values.descripcion || "",
         en_cuotas: values.en_cuotas,
         cuotas: values.cuotas,
-        monto_total: values.cantidad * values.costo_unit,
-        ciclo_cierre: ciclo_cierre.toISOString(), // Incluir el ciclo de cierre
-      }
+        payment_intent_id: compraId,
+        tipo_transaccion: "ingreso",
+      };
 
-      // Enviar a la API
-      const response = await fetch("/api/add-purchase", {
+      // Enviar datos a la API
+      const response = await fetch("/api/register-transaction", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(compraData),
-      })
+        body: JSON.stringify(transactionData),
+      });
+
+      console.log({ transactionData })
+
+      // Manejar la respuesta de la API
 
       if (!response.ok) {
         const errorText = await response.text()
@@ -203,13 +190,12 @@ export default function CompraConTarjetaDialog({ children }: CompraConTarjetaDia
 
       toast({
         title: "Compra registrada",
-        description: "La compra ha sido registrada y el stock ha sido actualizado",
+        description: "La compra se ha registrado correctamente.",
       })
 
       // Invalidar la caché de consultas para refrescar los datos
       queryClient.invalidateQueries({ queryKey: ["productos"] })
       queryClient.invalidateQueries({ queryKey: ["compras"] })
-      queryClient.invalidateQueries({ queryKey: ["price-history"] })
       queryClient.invalidateQueries({ queryKey: ["resumen"] })
 
       // Limpiar el formulario
@@ -406,7 +392,7 @@ export default function CompraConTarjetaDialog({ children }: CompraConTarjetaDia
                         </Button>
                       </FormControl>
                     </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
+                    <PopoverContent className="w-auto p-0" align="start">
                       <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
                     </PopoverContent>
                   </Popover>
