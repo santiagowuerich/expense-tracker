@@ -42,7 +42,7 @@ export default function Home() {
             </Button>
           </Link>
 
-          <Link href="/reportes" className="w-full">
+          <Link href="/reporte-inventario" className="w-full">
             <Button size="lg" variant="outline" className="w-full h-16 text-lg rounded-2xl">
               <FileBarChart className="mr-2 h-5 w-5" />
               Reportes
