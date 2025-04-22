@@ -172,16 +172,28 @@ function DetalleCompraCuotas({ idCompra, totalCuotasCompra }: { idCompra: string
     queryKey: ["detalleCompra", idCompra],
     queryFn: async () => {
       const supabase = createClient();
-      const { data, error } = await supabase
-        .from("pagos")
-        .select("id, cuota_actual, fecha, monto")
-        .eq("pago_original_id", idCompra)
-        .order("cuota_actual", { ascending: true });
       
-      if (error) throw new Error(error.message);
-      return data as CuotaDetalleData[] || []; // Castear al nuevo tipo
+      // ID artificial (aquellos creados en runtime para agrupación en cliente)
+      if (idCompra.startsWith("artificial_")) {
+        // Como estos IDs son artificiales, no existen en la base de datos
+        // Por lo que buscamos los pagos reales en la estructura local (ver abajo)
+        return [];
+      } else {
+        // Consulta para IDs reales
+        const { data, error } = await supabase
+          .from("pagos")
+          .select("id, cuota_actual, fecha, monto")
+          .eq("pago_original_id", idCompra)
+          .order("cuota_actual", { ascending: true });
+        
+        if (error) throw new Error(error.message);
+        return data as CuotaDetalleData[] || [];
+      }
     }
   });
+
+  // Aquí podríamos mejorar la implementación para acceder al contexto local
+  // pero por ahora lo dejaremos así para simplificar
 
   if (isLoading) {
     return (
@@ -202,7 +214,9 @@ function DetalleCompraCuotas({ idCompra, totalCuotasCompra }: { idCompra: string
   if (!cuotas || cuotas.length === 0) {
     return (
       <div className="p-4 text-sm text-muted-foreground">
-        No se encontraron cuotas para esta compra.
+        {idCompra.startsWith("artificial_") ? 
+          "Las cuotas están visibles directamente en la tabla superior." :
+          "No se encontraron cuotas para esta compra."}
       </div>
     );
   }
@@ -443,12 +457,35 @@ export default function ResumenPage() {
     const tarjetasProcesadas = tarjetas.map(tarjeta => {
       const pagosDeEsaTarjeta = pagosFiltrados.filter(p => p.tarjeta_id === tarjeta.id);
       const comprasMap = new Map<string, CompraAgrupada>();
-      const pagosUnicos: Pago[] = [];
-
+      
+      // Paso 1: Extraer patrones de descripción y crear grupos artificiales
+      const descripcionesBase = new Map<string, string>();
+      const patronCuota = /^(.+?)\s*\(Cuota\s+(\d+)\/(\d+)\)\s*$/i;
+      
+      // Primero identificamos todas las descripciones base para generar claves de agrupación
       pagosDeEsaTarjeta.forEach(pago => {
-        if (pago.es_cuota && pago.pago_original_id) {
+        const matches = pago.descripcion.match(patronCuota);
+        if (matches) {
+          const [, descripcionBase, cuotaActual, totalCuotas] = matches;
+          // Usamos la descripción base + total de cuotas como clave para agrupar 
+          // todas las cuotas de una misma compra
+          const claveAgrupacion = `${descripcionBase.trim()}_${totalCuotas}`;
+          
+          // Si no existe una clave artificial para esta descripción, la creamos
+          if (!descripcionesBase.has(claveAgrupacion)) {
+            // Usamos un ID artificial con un prefijo para evitar colisiones
+            descripcionesBase.set(claveAgrupacion, `artificial_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`);
+          }
+        }
+      });
+
+      // Segundo paso: procesar todos los pagos
+      pagosDeEsaTarjeta.forEach(pago => {
+        // Caso 1: Tiene pago_original_id (manera correcta de estar registrado)
+        if (pago.pago_original_id) {
           const idCompraOriginal = pago.pago_original_id;
           if (!comprasMap.has(idCompraOriginal)) {
+            // Limpiar la descripción de la parte de "Cuota X/Y"
             const descripcionBase = pago.descripcion.replace(/\s*\(Cuota \d+\/\d+\)\s*/, '').trim();
             comprasMap.set(idCompraOriginal, {
               idCompra: idCompraOriginal,
@@ -464,26 +501,58 @@ export default function ResumenPage() {
           grupo.pagosEnFiltro.push(pago);
           if (pago.cuotas > grupo.totalCuotas) grupo.totalCuotas = pago.cuotas;
           if (pago.fecha < grupo.fechaPrimerPago) grupo.fechaPrimerPago = pago.fecha;
-        } else {
-          if (!comprasMap.has(pago.id)) {
-             comprasMap.set(pago.id, {
-               idCompra: pago.id,
-               descripcion: pago.descripcion,
-               totalCuotas: 1,
-               montoCuota: pago.monto,
-               pagosEnFiltro: [pago],
-               esAgrupadoReal: false,
-               fechaPrimerPago: pago.fecha,
-             });
+        } 
+        // Caso 2: No tiene pago_original_id pero parece ser cuota por su descripción
+        else {
+          const matches = pago.descripcion.match(patronCuota);
+          if (matches) {
+            const [, descripcionBase, cuotaActual, totalCuotas] = matches;
+            const claveAgrupacion = `${descripcionBase.trim()}_${totalCuotas}`;
+            
+            // Usar el ID artificial como clave de agrupación
+            const idArtificial = descripcionesBase.get(claveAgrupacion)!;
+            
+            if (!comprasMap.has(idArtificial)) {
+              comprasMap.set(idArtificial, {
+                idCompra: idArtificial,
+                descripcion: descripcionBase.trim(),
+                totalCuotas: parseInt(totalCuotas, 10),
+                montoCuota: pago.monto,
+                pagosEnFiltro: [],
+                esAgrupadoReal: true, // Lo marcamos como agrupado real
+                fechaPrimerPago: pago.fecha,
+              });
+            }
+            
+            const grupo = comprasMap.get(idArtificial)!;
+            grupo.pagosEnFiltro.push(pago);
+            // Actualizar fecha del primer pago si es más antigua
+            if (pago.fecha < grupo.fechaPrimerPago) {
+              grupo.fechaPrimerPago = pago.fecha;
+            }
+          } 
+          // Caso 3: Pago único normal (sin patrón de cuota ni pago_original_id)
+          else {
+            if (!comprasMap.has(pago.id)) {
+              comprasMap.set(pago.id, {
+                idCompra: pago.id,
+                descripcion: pago.descripcion,
+                totalCuotas: 1,
+                montoCuota: pago.monto,
+                pagosEnFiltro: [pago],
+                esAgrupadoReal: false,
+                fechaPrimerPago: pago.fecha,
+              });
+            }
           }
         }
       });
 
       const comprasParaRenderizar = Array.from(comprasMap.values());
       comprasParaRenderizar.sort((a, b) => {
-          try {
-              return parseISO(a.fechaPrimerPago).getTime() - parseISO(b.fechaPrimerPago).getTime();
-          } catch { return 0; }
+        try {
+          return parseISO(a.fechaPrimerPago).getTime() - parseISO(b.fechaPrimerPago).getTime();
+        } catch { return 0; }
       });
 
       const subtotalReal = pagosDeEsaTarjeta.reduce((sum, p) => sum + p.monto, 0);
@@ -750,23 +819,44 @@ export default function ResumenPage() {
                                    <span className="text-xs text-muted-foreground">
                                      {formatShortDate(compra.fechaPrimerPago)}
                                    </span>
-                                )}
+                                  )}
                               </div>
                               <div className="font-semibold whitespace-nowrap flex-shrink-0">
-                                {formatCurrency(compra.pagosEnFiltro.reduce((sum: number, p: Pago) => sum + p.monto, 0))}
+                                {formatCurrency(compra.pagosEnFiltro.reduce((sum, p) => sum + p.monto, 0))}
                               </div>
                             </AccordionTrigger>
                             <AccordionContent className="border-t bg-card px-0 py-0">
                               {compra.esAgrupadoReal ? (
-                                <DetalleCompraCuotas
-                                  idCompra={compra.idCompra}
-                                  totalCuotasCompra={compra.totalCuotas}
-                                />
+                                compra.idCompra.startsWith("artificial_") ? (
+                                  <Table className="text-sm">
+                                    <TableHeader>
+                                      <TableRow>
+                                        <TableHead className="w-20">Cuota</TableHead>
+                                        <TableHead>Fecha</TableHead>
+                                        <TableHead className="text-right">Monto</TableHead>
+                                      </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                      {compra.pagosEnFiltro.map((pago) => (
+                                        <TableRow key={pago.id}>
+                                          <TableCell>{pago.cuota_actual}/{compra.totalCuotas}</TableCell>
+                                          <TableCell>{format(parseISO(pago.fecha), "d MMM yyyy", { locale: es })}</TableCell>
+                                          <TableCell className="text-right font-medium">{formatCurrency(pago.monto)}</TableCell>
+                                        </TableRow>
+                                      ))}
+                                    </TableBody>
+                                  </Table>
+                                ) : (
+                                  <DetalleCompraCuotas
+                                    idCompra={compra.idCompra}
+                                    totalCuotasCompra={compra.totalCuotas}
+                                  />
+                                )
                               ) : (
                                 <div className="px-3 py-2 text-xs text-muted-foreground">
                                   Pago único.
                                   {compra.pagosEnFiltro[0]?.categoria_nombre && compra.pagosEnFiltro[0]?.categoria_nombre !== "Sin categoría" && (
-                                      ` Categoría: ${compra.pagosEnFiltro[0].categoria_nombre}`
+                                    ` Categoría: ${compra.pagosEnFiltro[0].categoria_nombre}`
                                   )}
                                 </div>
                               )}
@@ -774,7 +864,7 @@ export default function ResumenPage() {
                           </AccordionItem>
                         ))}
                       </Accordion>
-                    ) : (
+                      ) : (
                       <div className="py-4 text-center text-muted-foreground text-sm">
                         No hay gastos registrados para esta tarjeta con los filtros aplicados.
                         </div>
