@@ -8,6 +8,9 @@ import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase-browser"
 import { useState, useMemo } from "react"
 import type { DateRange } from "react-day-picker"
+import { FixedSizeList, ListChildComponentProps } from 'react-window';
+import { useComprasResumen, useCuotasDetalle, formatCurrency, formatShortDate, CompraResumen, CuotaDetalle } from "@/hooks/useResumenCompras";
+import { AlertTriangle, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
@@ -36,6 +39,7 @@ import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import PagosFuturosPorMes from "@/components/pagos-futuros-por-mes"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 
 // Definiciones de tipos existentes
 type Tarjeta = {
@@ -48,6 +52,7 @@ type Tarjeta = {
 type Pago = {
   id: string
   tarjeta_id: string
+  tarjeta_alias?: string | null
   monto: number
   fecha: string
   descripcion: string
@@ -93,12 +98,30 @@ type PagoRaw = {
   producto_id: string | null;
   payment_intent_id: string;
   payment_method: string;
-  productos: { // Corresponde a 'productos (nombre, categorias(nombre))'
+  tarjetas: {
+    alias: string | null;
+  } | null;
+  productos: {
     nombre: string | null;
-    categorias: { nombre: string | null } | null; // Corresponde a 'categorias(nombre)' dentro de productos
-  } | null; // 'productos' puede ser null si no hay producto asociado
+    categorias: { nombre: string | null } | null;
+  } | null;
 };
 
+// Tipo para representar una compra agrupada (sea una compra real con cuotas o un pago único tratado como grupo)
+type CompraAgrupada = {
+  idCompra: string;         // Será pago_original_id para cuotas, o pago.id para pagos únicos
+  descripcion: string;      // Descripción base (sin "Cuota X/Y") o descripción del pago único
+  totalCuotas: number;      // Número total de cuotas de la compra original (o 1 si es pago único)
+  montoCuota: number;       // Monto representativo de la cuota (o monto del pago único)
+  pagosEnFiltro: Pago[];  // Pagos (cuotas) de esta compra que están DENTRO del filtro actual
+  esAgrupadoReal: boolean;  // true si agrupa múltiples cuotas reales (basado en pago_original_id)
+  fechaPrimerPago: string;  // Fecha del primer pago encontrado para ordenar
+};
+
+// Tipo unión para los elementos que mostraremos en el acordeón de cada tarjeta
+type ElementoMostrado =
+  | { type: 'agrupada'; data: CompraAgrupada }
+  | { type: 'unico'; data: Pago };
 
 // Función para calcular la próxima fecha de vencimiento
 function calcularProximoVencimiento(vencDia: number): Date {
@@ -131,50 +154,85 @@ function calcularProximoCierreMes(cierreDia: number): Date {
   return new Date(now.getFullYear(), now.getMonth() + 1, cierreDia);
 }
 
-
-// Función para formatear montos con Intl.NumberFormat
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("es-AR", {
-    style: "currency",
-    currency: "ARS",
-  }).format(amount)
-}
-
 // Colores para el gráfico de categorías
 const COLORS = ["#8884d8", "#83a6ed", "#8dd1e1", "#82ca9d", "#a4de6c", "#d0ed57", "#ffc658"]
 
-// Función para agrupar gastos por mes (parece no usarse en el componente)
-// Función para agrupar gastos por mes (mejorada)
-function agruparGastosPorMes(pagos: Pago[]): { mes: string; total: number }[] {
-  const mesesMap = new Map<string, number>()
+// Renombrar la interfaz local para evitar conflicto
+interface CuotaDetalleData {
+  id: string;
+  cuota_actual: number;
+  fecha: string;
+  monto: number;
+}
 
-  pagos.forEach((pago) => {
-   try {
-     const fecha = parseISO(pago.fecha); // Intentar parsear
-     const mesKey = format(fecha, "yyyy-MM");
-     const total = mesesMap.get(mesKey) || 0;
-     mesesMap.set(mesKey, total + pago.monto);
-   } catch (e) {
-     console.warn(`Fecha inválida encontrada en pago ${pago.id}: ${pago.fecha}`);
-     // Opcional: manejar el error de otra forma
-   }
- })
+// Componente para el detalle de cuotas (lazy loading)
+function DetalleCompraCuotas({ idCompra, totalCuotasCompra }: { idCompra: string; totalCuotasCompra: number }) {
+  // Usar el nuevo nombre de interfaz
+  const { data: cuotas, isLoading, isError } = useQuery<CuotaDetalleData[]>({
+    queryKey: ["detalleCompra", idCompra],
+    queryFn: async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("pagos")
+        .select("id, cuota_actual, fecha, monto")
+        .eq("pago_original_id", idCompra)
+        .order("cuota_actual", { ascending: true });
+      
+      if (error) throw new Error(error.message);
+      return data as CuotaDetalleData[] || []; // Castear al nuevo tipo
+    }
+  });
 
-  // Convertir a array y ordenar por fecha
-  // Convertir a array, ordenar por clave y luego formatear
-  return Array.from(mesesMap.entries())
-   .sort(([keyA], [keyB]) => keyA.localeCompare(keyB)) // Ordenar por yyyy-MM
-   .map(([mesKey, total]) => ({
-     mes: format(parseISO(mesKey + "-01"), "MMM yy", { locale: es }), // Formato MMM yy
-     total,
-   }))
- }
+  if (isLoading) {
+    return (
+      <div className="flex justify-center p-4">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
+  if (isError) {
+    return (
+      <div className="p-4 text-sm text-destructive">
+        No se pudieron cargar las cuotas.
+      </div>
+    );
+  }
+
+  if (!cuotas || cuotas.length === 0) {
+    return (
+      <div className="p-4 text-sm text-muted-foreground">
+        No se encontraron cuotas para esta compra.
+      </div>
+    );
+  }
+
+  return (
+    <Table className="text-sm">
+      <TableHeader>
+        <TableRow>
+          <TableHead className="w-20">Cuota</TableHead>
+          <TableHead>Fecha</TableHead>
+          <TableHead className="text-right">Monto</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {cuotas.map((cuota) => (
+          <TableRow key={cuota.id}>
+            <TableCell>{cuota.cuota_actual}/{totalCuotasCompra}</TableCell>
+            <TableCell>{format(parseISO(cuota.fecha), "d MMM yyyy", { locale: es })}</TableCell>
+            <TableCell className="text-right font-medium">{formatCurrency(cuota.monto)}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
 
 export default function ResumenPage() {
   const router = useRouter()
   const [incluirCuotasFuturas, setIncluirCuotasFuturas] = useState(false)
-  const [dateRange, setDateRange] = useState<DateRange | undefined>(() => { // Lazy initial state
+  const [rawDateRange, setRawDateRange] = useState<DateRange | undefined>(() => {
     const today = new Date();
     return {
       from: addDays(today, -30),
@@ -183,6 +241,14 @@ export default function ResumenPage() {
   });
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [openCategoryDropdown, setOpenCategoryDropdown] = useState(false)
+
+  // <<< Modificar setDateRange para incluir Log >>>
+  const setDateRange = (newRange: DateRange | undefined) => {
+      console.log("[ResumenPage] setDateRange called. New range:", newRange);
+      setRawDateRange(newRange);
+  }
+  // Usar rawDateRange como dependencia para el useMemo
+  const dateRange = rawDateRange;
 
   // Query para obtener TODOS los datos base (tarjetas y pagos transformados)
   // La queryKey ahora es simple, ya no depende de los filtros locales
@@ -207,6 +273,7 @@ export default function ResumenPage() {
         .select(`
           id, tarjeta_id, monto, fecha, descripcion, ciclo_cierre,
           cuotas, cuota_actual, es_cuota, pago_original_id, producto_id, payment_intent_id, payment_method,
+          tarjetas (alias),
           productos (nombre, categorias(nombre))
         `)
         .neq("cuota_actual", 0) // Excluir registros de totales (cuota_actual = 0)
@@ -229,8 +296,8 @@ export default function ResumenPage() {
       const pagosTransformados: Pago[] = pagosUnicosRaw.map((pagoRaw) => {
         // Acceder a los datos anidados de forma segura y aplanar
         const productoNombre = pagoRaw.productos?.nombre || null;
-        // Acceder a la categoría a través del producto anidado
         const categoriaNombre = pagoRaw.productos?.categorias?.nombre || "Sin categoría";
+        const tarjetaAlias = pagoRaw.tarjetas?.alias || null;
 
 
         return {
@@ -249,9 +316,9 @@ export default function ResumenPage() {
           payment_intent_id: pagoRaw.payment_intent_id,
           payment_method: pagoRaw.payment_method,
           // Propiedades aplanadas
+          tarjeta_alias: tarjetaAlias,
           producto_nombre: productoNombre,
           categoria_nombre: categoriaNombre,
-          // Omitir el objeto anidado 'productos'
         };
       });
 
@@ -263,9 +330,18 @@ export default function ResumenPage() {
     },
   });
 
+  // <<< --- NUEVO: Hook para Resumen de Compras en Cuotas --- >>>
+  const {
+      data: comprasResumen,
+      isLoading: isLoadingComprasResumen,
+      isError: isErrorComprasResumen,
+      error: errorComprasResumen
+  } = useComprasResumen();
+
   // --- Procesamiento y filtrado en el cliente ---
-  // Usamos useMemo para evitar recalcular en cada render a menos que las dependencias cambien
   const processedData = useMemo(() => {
+    console.log("[ResumenPage] useMemo recalculating. Date range:", dateRange);
+
     if (!baseData) {
       return {
         tarjetas: [],
@@ -293,14 +369,23 @@ export default function ResumenPage() {
     if (dateRange?.from && dateRange?.to) {
       const start = startOfDay(dateRange.from);
       const end = endOfDay(dateRange.to);
+      
+      // Loguear para depuración
+      console.log("Total pagos antes de filtrar por fecha:", todosLosPagos.length);
+      
       pagosFiltrados = pagosFiltrados.filter((pago) => {
          try {
             const fechaPago = startOfDay(parseISO(pago.fecha));
-            return isWithinInterval(fechaPago, { start, end });
-         } catch {
-             return false; // Ignorar fechas inválidas en el filtro
-         }
+          const dentroDeFecha = isWithinInterval(fechaPago, { start, end });
+          return dentroDeFecha;
+        } catch (e) {
+          console.error("Error al filtrar por fecha:", e, pago);
+          return false; // Ignorar fechas inválidas
+        }
       });
+      
+      // Loguear después de filtrar
+      console.log("Total pagos después de filtrar por fecha:", pagosFiltrados.length);
     }
 
     if (selectedCategory) {
@@ -354,35 +439,91 @@ export default function ResumenPage() {
       total,
     }));
 
+    // <<< --- INICIO Procesamiento por tarjeta con agrupación por COMPRA --- >>>
+    const tarjetasProcesadas = tarjetas.map(tarjeta => {
+      const pagosDeEsaTarjeta = pagosFiltrados.filter(p => p.tarjeta_id === tarjeta.id);
+      const comprasMap = new Map<string, CompraAgrupada>();
+      const pagosUnicos: Pago[] = [];
+
+      pagosDeEsaTarjeta.forEach(pago => {
+        if (pago.es_cuota && pago.pago_original_id) {
+          const idCompraOriginal = pago.pago_original_id;
+          if (!comprasMap.has(idCompraOriginal)) {
+            const descripcionBase = pago.descripcion.replace(/\s*\(Cuota \d+\/\d+\)\s*/, '').trim();
+            comprasMap.set(idCompraOriginal, {
+              idCompra: idCompraOriginal,
+              descripcion: descripcionBase || pago.descripcion,
+              totalCuotas: pago.cuotas,
+              montoCuota: pago.monto,
+              pagosEnFiltro: [],
+              esAgrupadoReal: true,
+              fechaPrimerPago: pago.fecha,
+            });
+          }
+          const grupo = comprasMap.get(idCompraOriginal)!;
+          grupo.pagosEnFiltro.push(pago);
+          if (pago.cuotas > grupo.totalCuotas) grupo.totalCuotas = pago.cuotas;
+          if (pago.fecha < grupo.fechaPrimerPago) grupo.fechaPrimerPago = pago.fecha;
+        } else {
+          if (!comprasMap.has(pago.id)) {
+             comprasMap.set(pago.id, {
+               idCompra: pago.id,
+               descripcion: pago.descripcion,
+               totalCuotas: 1,
+               montoCuota: pago.monto,
+               pagosEnFiltro: [pago],
+               esAgrupadoReal: false,
+               fechaPrimerPago: pago.fecha,
+             });
+          }
+        }
+      });
+
+      const comprasParaRenderizar = Array.from(comprasMap.values());
+      comprasParaRenderizar.sort((a, b) => {
+          try {
+              return parseISO(a.fechaPrimerPago).getTime() - parseISO(b.fechaPrimerPago).getTime();
+          } catch { return 0; }
+      });
+
+      const subtotalReal = pagosDeEsaTarjeta.reduce((sum, p) => sum + p.monto, 0);
+
+      return {
+        ...tarjeta,
+        subtotalFiltrado: subtotalReal,
+        comprasAgrupadas: comprasParaRenderizar,
+      };
+    });
+    // <<< --- FIN Procesamiento por tarjeta --- >>>
+
     const displayNextClosureDate = tarjetas.length > 0
       ? calcularProximoCierreMes(tarjetas[0].cierre_dia)
       : addMonths(new Date(), 1);
 
     return {
-      tarjetas: tarjetas,
-      pagosFiltrados: pagosFiltrados, // Los pagos que se mostrarán en las tablas
+      tarjetas: tarjetasProcesadas,
+      pagosFiltrados: pagosFiltrados,
       totales,
-      categorias: categoriasFiltradas, // Categorías basadas en los filtros
+      categorias: categoriasFiltradas,
       nextClosureDate: displayNextClosureDate,
-      allCategorias: allCategorias, // Todas las categorías para el dropdown
+      allCategorias: allCategorias,
     };
 
-  }, [baseData, dateRange, selectedCategory, incluirCuotasFuturas]); // Dependencias de useMemo
+  }, [baseData, dateRange, selectedCategory, incluirCuotasFuturas]);
 
-  // Extraer los datos procesados
+  // Extraer tarjetas procesadas y otras variables necesarias fuera del useMemo
   const {
-      tarjetas,
+      tarjetas: tarjetasProcesadas,
       pagosFiltrados,
       totales,
-      categorias: categoriasFiltradas, // Renombrar para claridad
+      categorias: categoriasFiltradas,
       nextClosureDate,
-      allCategorias // Usar esta para el dropdown
+      allCategorias
   } = processedData;
 
-  // Formatear la fecha del próximo cierre para mostrar en la UI
   const nextClosureDateFormatted = nextClosureDate
     ? format(nextClosureDate, "d 'de' MMMM 'de' yyyy", { locale: es })
-    : ""
+    : "";
 
   // Función para descargar CSV
   const descargarCSV = () => {
@@ -496,7 +637,7 @@ export default function ResumenPage() {
             <CardDescription>Ocurrió un error al cargar los datos base. Por favor, intenta nuevamente. {baseError.message}</CardDescription>
           </CardHeader>
         </Card>
-      ) : !tarjetas || tarjetas.length === 0 ? (
+      ) : !tarjetasProcesadas || tarjetasProcesadas.length === 0 ? (
         <EmptyState
           title="Sin tarjetas registradas"
           description="Agrega tu primera tarjeta para empezar a anotar gastos."
@@ -573,88 +714,76 @@ export default function ResumenPage() {
             </div>
           </div>
 
-          <div className="space-y-4 mb-8">
-            {tarjetas.map((tarjeta) => {
-              // Filtrar pagos por tarjeta, usando los pagos ya filtrados por fecha/categoría
-              const pagosDeEsaTarjeta = pagosFiltrados.filter((pago) => pago.tarjeta_id === tarjeta.id);
-
-              // Calcular subtotal solo de los pagos que se muestran (filtrados por tarjeta y rango/categoría)
-              const subtotal = pagosDeEsaTarjeta.reduce((total, pago) => total + pago.monto, 0)
-              const proximoVencimiento = calcularProximoVencimiento(tarjeta.venc_dia)
-
+          {/* --- SECCIÓN: Resumen por Tarjeta (Filtrado) --- */}
+          <h2 className="text-xl font-semibold mt-8 mb-4">Resumen por Tarjeta (Filtrado)</h2>
+          <Accordion type="multiple" className="space-y-3 mb-8">
+            {tarjetasProcesadas.map((tarjeta) => {
+              const proximoVencimiento = calcularProximoVencimiento(tarjeta.venc_dia);
               return (
-                <Accordion type="single" collapsible key={tarjeta.id} className="rounded-2xl shadow-sm border">
-                  <AccordionItem value={tarjeta.id} className="border-none">
-                    <AccordionTrigger className="px-6 py-4 hover:no-underline hover:bg-muted/50 rounded-t-2xl">
-                      <div className="flex flex-col items-start text-left">
-                        <div className="flex items-center">
-                          <span className="text-xl font-semibold">{tarjeta.alias}</span>
-                        </div>
+                <AccordionItem value={tarjeta.id} key={tarjeta.id} className="border rounded-lg shadow-sm bg-card">
+                  <AccordionTrigger className="px-4 py-3 hover:no-underline text-left">
+                     <div className="flex flex-col flex-grow mr-4">
+                         <span className="font-medium text-lg">{tarjeta.alias}</span>
                         <p className="text-sm text-muted-foreground mt-1">
-                          Vence: {format(proximoVencimiento, "d MMM yyyy", { locale: es })} • Total:{" "}
-                          {formatCurrency(subtotal)}
+                             Total (filtrado): {formatCurrency(tarjeta.subtotalFiltrado)}
                         </p>
                       </div>
+                     <Badge variant="outline">Vence: {format(proximoVencimiento, "d MMM yy", { locale: es })}</Badge>
                     </AccordionTrigger>
-                    <AccordionContent className="px-0">
-                      {pagosDeEsaTarjeta.length > 0 ? (
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>Fecha</TableHead>
-                              <TableHead>Descripción</TableHead>
-                              <TableHead>Método</TableHead>
-                              <TableHead>Categoría</TableHead>
-                              <TableHead className="text-right">Monto</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {pagosDeEsaTarjeta.map((pago) => (
-                              <TableRow key={pago.id}>
-                                <TableCell>{pago.fecha ? format(parseISO(pago.fecha), "d MMM", { locale: es }) : 'N/A'}</TableCell>
-                                <TableCell>
-                                  {pago.descripcion}
-                                  {pago.es_cuota && pago.cuotas > 1 && (
-                                    <Badge variant="outline" className="ml-2">
-                                      Cuota {pago.cuota_actual}/{pago.cuotas}
-                                    </Badge>
+                  <AccordionContent className="px-3 pt-2 pb-3">
+                    {tarjeta.comprasAgrupadas.length > 0 ? (
+                      <Accordion type="multiple" className="space-y-2">
+                        {tarjeta.comprasAgrupadas.map((compra, index) => (
+                          <AccordionItem
+                            key={`${compra.idCompra}-${index}`}
+                            value={`${compra.idCompra}-${index}`}
+                            className="border rounded-md bg-muted/30 overflow-hidden"
+                          >
+                            <AccordionTrigger className="px-3 py-2 hover:bg-muted/60 hover:no-underline text-sm text-left">
+                              <div className="flex flex-col items-start flex-grow mr-2">
+                                <span className="font-medium">{compra.descripcion}</span>
+                                {compra.esAgrupadoReal ? (
+                                  <span className="text-xs text-muted-foreground">
+                                    {compra.totalCuotas} cuotas de {formatCurrency(compra.montoCuota)}
+                                  </span>
+                                ) : (
+                                   <span className="text-xs text-muted-foreground">
+                                     {formatShortDate(compra.fechaPrimerPago)}
+                                   </span>
+                                )}
+                              </div>
+                              <div className="font-semibold whitespace-nowrap flex-shrink-0">
+                                {formatCurrency(compra.pagosEnFiltro.reduce((sum: number, p: Pago) => sum + p.monto, 0))}
+                              </div>
+                            </AccordionTrigger>
+                            <AccordionContent className="border-t bg-card px-0 py-0">
+                              {compra.esAgrupadoReal ? (
+                                <DetalleCompraCuotas
+                                  idCompra={compra.idCompra}
+                                  totalCuotasCompra={compra.totalCuotas}
+                                />
+                              ) : (
+                                <div className="px-3 py-2 text-xs text-muted-foreground">
+                                  Pago único.
+                                  {compra.pagosEnFiltro[0]?.categoria_nombre && compra.pagosEnFiltro[0]?.categoria_nombre !== "Sin categoría" && (
+                                      ` Categoría: ${compra.pagosEnFiltro[0].categoria_nombre}`
                                   )}
-                                  {pago.producto_nombre && (
-                                    <Badge variant="secondary" className="ml-2">
-                                      {pago.producto_nombre}
-                                    </Badge>
-                                  )}
-                                </TableCell>
-                                <TableCell>
-                                  <Badge variant="outline" className="capitalize">
-                                    {pago.payment_method || "tarjeta"}
-                                  </Badge>
-                                </TableCell>
-                                <TableCell>
-                                  {pago.categoria_nombre && <Badge variant="outline">{pago.categoria_nombre}</Badge>}
-                                </TableCell>
-                                <TableCell className="text-right">{formatCurrency(pago.monto)}</TableCell>
-                              </TableRow>
-                            ))}
-                            <TableRow>
-                              <TableCell colSpan={4} className="font-bold">
-                                Subtotal
-                              </TableCell>
-                              <TableCell className="text-right font-bold">{formatCurrency(subtotal)}</TableCell>
-                            </TableRow>
-                          </TableBody>
-                        </Table>
-                      ) : (
-                        <div className="py-4 px-6 text-center text-muted-foreground">
-                          No hay gastos registrados para esta tarjeta en el rango de fechas y categoría seleccionados.
+                                </div>
+                              )}
+                            </AccordionContent>
+                          </AccordionItem>
+                        ))}
+                      </Accordion>
+                    ) : (
+                      <div className="py-4 text-center text-muted-foreground text-sm">
+                        No hay gastos registrados para esta tarjeta con los filtros aplicados.
                         </div>
                       )}
                     </AccordionContent>
                   </AccordionItem>
-                </Accordion>
-              )
+              );
             })}
-          </div>
+          </Accordion>
 
           <div className="space-y-4 mb-8">
             <Card className="rounded-2xl shadow-sm">
@@ -715,9 +844,9 @@ export default function ResumenPage() {
                       outerRadius={80}
                       fill="#8884d8"
                       dataKey="total"
-                      label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                      label={({ name, percent }: { name: string, percent: number }) => `${name} (${(percent * 100).toFixed(0)}%)`}
                     >
-                      {categoriasFiltradas.map((entry, index) => (
+                      {categoriasFiltradas.map((entry: { nombre: string; total: number }, index: number) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
@@ -755,14 +884,90 @@ export default function ResumenPage() {
           )}
 
           {/* <<< --- NUEVO COMPONENTE INTEGRADO AQUÍ --- >>> */}
-          {/* Renderizar solo si hay datos base */}           
           {baseData && baseData.pagos && baseData.pagos.length > 0 && (
-             <PagosFuturosPorMes pagos={baseData.pagos} /> // Pasar todos los pagos base
+             <PagosFuturosPorMes pagos={baseData.pagos} />
           )}
           {/* <<< --- FIN DE LA INTEGRACIÓN --- >>> */}
 
+          {/* <<< --- NUEVA SECCIÓN: Compras en Cuotas --- >>> */}
+          <h2 className="text-xl font-semibold mt-8 mb-4">Compras en Cuotas Pendientes</h2>
+           {isLoadingComprasResumen ? (
+             <div className="space-y-4">
+               <Skeleton className="h-20 w-full rounded-lg" />
+               <Skeleton className="h-20 w-full rounded-lg" />
+             </div>
+           ) : isErrorComprasResumen ? (
+             <Card className="rounded-lg border-destructive bg-destructive/10">
+                <CardHeader>
+                    <CardTitle className="text-destructive flex items-center">
+                        <AlertTriangle className="mr-2 h-5 w-5" /> Error al Cargar Compras
+                    </CardTitle>
+                    <CardDescription className="text-destructive">
+                        No se pudo obtener el resumen de compras en cuotas. {errorComprasResumen?.message}
+                    </CardDescription>
+                </CardHeader>
+             </Card>
+           ) : !comprasResumen || comprasResumen.length === 0 ? (
+              <Card className="rounded-lg border-dashed">
+                 <CardHeader className="items-center text-center">
+                   <CardTitle className="text-lg font-medium">Sin Compras en Cuotas</CardTitle>
+                   <CardDescription className="text-muted-foreground">
+                     No se encontraron compras activas pagándose en cuotas.
+                   </CardDescription>
+                 </CardHeader>
+              </Card>
+           ) : (
+             <Accordion type="multiple" className="w-full space-y-3">
+               {comprasResumen.map((compra) => (
+                 <AccordionItem value={compra.idCompra} key={compra.idCompra} className="border rounded-lg shadow-sm bg-card">
+                    <AccordionTrigger className="px-4 py-3 hover:no-underline text-left">
+                     <div className="flex flex-col flex-grow mr-4">
+                       <span className="font-medium truncate" title={compra.descripcion}>{compra.descripcion}</span>
+                       <span className="text-sm text-muted-foreground">
+                         {compra.cuotasPagadas}/{compra.totalCuotas} cuotas pagadas • {formatCurrency(compra.montoCuota)} c/u
+                       </span>
+                     </div>
+                     {compra.fechaProximaCuota ? (
+                       <Badge variant="outline">Próxima: {formatShortDate(compra.fechaProximaCuota)}</Badge>
+                     ) : (
+                       <Badge variant="secondary">Completo</Badge>
+                     )}
+                   </AccordionTrigger>
+                   <AccordionContent className="px-4 pb-0">
+                     <DetalleCompraCuotas
+                       idCompra={compra.idCompra}
+                       totalCuotasCompra={compra.totalCuotas}
+                     />
+                   </AccordionContent>
+                 </AccordionItem>
+               ))}
+             </Accordion>
+           )}
+           {/* <<< --- FIN NUEVA SECCIÓN --- >>> */}
         </>
       )}
     </div>
   )
+}
+
+// Asegúrate de que la función agruparGastosPorMes esté definida fuera del componente o importada
+// Si no está, el gráfico de barras fallará. Por ahora, lo dejo con data=[]
+function agruparGastosPorMes(pagos: Pago[]): { mes: string; total: number }[] {
+  const mesesMap = new Map<string, number>()
+  pagos.forEach((pago) => {
+   try {
+     const fecha = parseISO(pago.fecha);
+     const mesKey = format(fecha, "yyyy-MM");
+     const total = mesesMap.get(mesKey) || 0;
+     mesesMap.set(mesKey, total + pago.monto);
+   } catch (e) {
+     console.warn(`Fecha inválida encontrada en pago ${pago.id}: ${pago.fecha}`);
+   }
+ })
+  return Array.from(mesesMap.entries())
+   .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
+   .map(([mesKey, total]) => ({
+     mes: format(parseISO(mesKey + "-01"), "MMM yy", { locale: es }),
+     total,
+   }))
 }
