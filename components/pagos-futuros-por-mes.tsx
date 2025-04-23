@@ -42,6 +42,9 @@ type Pago = {
   es_cuota?: boolean;
   tarjeta_id: string;
   tarjeta_alias?: string | null;
+  pago_original_id?: string | null;
+  cuota_actual?: number;
+  cuotas?: number;
 };
 
 interface PagosFuturosPorMesProps {
@@ -60,6 +63,9 @@ interface PagoIndividual {
     id: string;
     descripcion: string;
     monto: number;
+    fecha: string; // Fecha de compra original
+    cuota_actual?: number;
+    cuotas?: number;
 }
 
 // Estructura DetalleTarjeta actualizada
@@ -121,7 +127,10 @@ export default function PagosFuturosPorMes({ pagos }: PagosFuturosPorMesProps) {
         tarjetaData.pagosDelMes.push({
             id: pago.id,
             descripcion: pago.descripcion,
-            monto: pago.monto
+            monto: pago.monto,
+            fecha: pago.fecha,
+            cuota_actual: pago.cuota_actual,
+            cuotas: pago.cuotas
         });
 
       } catch (e) {
@@ -177,7 +186,14 @@ export default function PagosFuturosPorMes({ pagos }: PagosFuturosPorMesProps) {
                                 <ul className="space-y-1 text-xs text-muted-foreground">
                                     {detalle.pagosDelMes.map(pago => (
                                         <li key={pago.id} className="flex justify-between items-center">
-                                            <span className="truncate pr-2" title={pago.descripcion}>{pago.descripcion}</span>
+                                            <div className="flex-1 pr-2">
+                                                <div className="truncate" title={pago.descripcion}>{pago.descripcion}</div>
+                                                <div className="text-[0.65rem] text-muted-foreground/70">
+                                                    {pago.fecha && format(parseISO(pago.fecha), "dd/MM/yyyy")}
+                                                    {pago.cuota_actual && pago.cuotas && pago.cuota_actual > 0 && 
+                                                     ` • Cuota ${pago.cuota_actual}/${pago.cuotas}`}
+                                                </div>
+                                            </div>
                                             <span className="font-mono whitespace-nowrap">{formatCurrencyARS(pago.monto)}</span>
                                         </li>
                                     ))}
