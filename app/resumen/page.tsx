@@ -918,148 +918,36 @@ export default function ResumenPage() {
             )}
           </div>
 
-          {/* Gráfico de pastel por categoría */}
-          {categoriasFiltradas && categoriasFiltradas.length > 0 && (
-            <Card className="rounded-2xl shadow-sm mb-8">
-              <CardHeader>
-                <CardTitle>Gastos por Categoría (Filtrados)</CardTitle>
-                <CardDescription>Distribución de gastos según las categorías en el rango de fechas y categoría seleccionados.</CardDescription>
-              </CardHeader>
-              <CardContent className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={categoriasFiltradas}
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={80}
-                      fill="#8884d8"
-                      dataKey="total"
-                      label={({ name, percent }: { name: string, percent: number }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                    >
-                      {categoriasFiltradas.map((entry: { nombre: string; total: number }, index: number) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <RechartsTooltip formatter={(value) => formatCurrency(value as number)} />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Gráfico de barras (usando pagosFiltrados y la función mejorada) */}
-          {pagosFiltrados && pagosFiltrados.length > 0 && (
-            <Card className="rounded-2xl shadow-sm mb-8">
-              <CardHeader>
-                <CardTitle>Gastos por Mes (Filtrados)</CardTitle>
-                <CardDescription>Tendencia de gastos en el rango de fechas seleccionado.</CardDescription>
-              </CardHeader>
-              <CardContent className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={agruparGastosPorMes(pagosFiltrados)}
-                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="mes" />
-                    <YAxis tickFormatter={(value: number) => formatCurrency(value)} />
-                    <RechartsTooltip formatter={(value) => formatCurrency(value as number)} />
-                    <Legend />
-                    <Bar dataKey="total" fill="#8884d8" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          )}
-
           {/* <<< --- NUEVO COMPONENTE INTEGRADO AQUÍ --- >>> */}
           {baseData && baseData.pagos && baseData.pagos.length > 0 && (
              <PagosFuturosPorMes pagos={baseData.pagos} />
           )}
           {/* <<< --- FIN DE LA INTEGRACIÓN --- >>> */}
 
-          {/* <<< --- NUEVA SECCIÓN: Compras en Cuotas --- >>> */}
-          <h2 className="text-xl font-semibold mt-8 mb-4">Compras en Cuotas Pendientes</h2>
-           {isLoadingComprasResumen ? (
-             <div className="space-y-4">
-               <Skeleton className="h-20 w-full rounded-lg" />
-               <Skeleton className="h-20 w-full rounded-lg" />
-             </div>
-           ) : isErrorComprasResumen ? (
-             <Card className="rounded-lg border-destructive bg-destructive/10">
-                <CardHeader>
-                    <CardTitle className="text-destructive flex items-center">
-                        <AlertTriangle className="mr-2 h-5 w-5" /> Error al Cargar Compras
-                    </CardTitle>
-                    <CardDescription className="text-destructive">
-                        No se pudo obtener el resumen de compras en cuotas. {errorComprasResumen?.message}
-                    </CardDescription>
-                </CardHeader>
-             </Card>
-           ) : !comprasResumen || comprasResumen.length === 0 ? (
-              <Card className="rounded-lg border-dashed">
-                 <CardHeader className="items-center text-center">
-                   <CardTitle className="text-lg font-medium">Sin Compras en Cuotas</CardTitle>
-                   <CardDescription className="text-muted-foreground">
-                     No se encontraron compras activas pagándose en cuotas.
-                   </CardDescription>
-                 </CardHeader>
-              </Card>
-           ) : (
-             <Accordion type="multiple" className="w-full space-y-3">
-               {comprasResumen.map((compra) => (
-                 <AccordionItem value={compra.idCompra} key={compra.idCompra} className="border rounded-lg shadow-sm bg-card">
-                    <AccordionTrigger className="px-4 py-3 hover:no-underline text-left">
-                     <div className="flex flex-col flex-grow mr-4">
-                       <span className="font-medium truncate" title={compra.descripcion}>{compra.descripcion}</span>
-                       <span className="text-sm text-muted-foreground">
-                         {compra.cuotasPagadas}/{compra.totalCuotas} cuotas pagadas • {formatCurrency(compra.montoCuota)} c/u
-                       </span>
-                     </div>
-                     {compra.fechaProximaCuota ? (
-                       <Badge variant="outline">Próxima: {formatShortDate(compra.fechaProximaCuota)}</Badge>
-                     ) : (
-                       <Badge variant="secondary">Completo</Badge>
-                     )}
-                   </AccordionTrigger>
-                   <AccordionContent className="px-4 pb-0">
-                     <DetalleCompraCuotas
-                       idCompra={compra.idCompra}
-                       totalCuotasCompra={compra.totalCuotas}
-                     />
-                   </AccordionContent>
-                 </AccordionItem>
-               ))}
-             </Accordion>
-           )}
-           {/* <<< --- FIN NUEVA SECCIÓN --- >>> */}
+          {/* Card para Pagos Efectivo/Transferencia --> NUEVO */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Pagos Efectivo / Transferencia</CardTitle>
+              <CardDescription>
+                Ver detalle de pagos realizados sin tarjeta.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                Haz clic en el botón para ver el detalle por mes.
+              </p>
+            </CardContent>
+            <CardFooter>
+              <CashPaymentsModal>
+                <Button variant="outline">Ver Detalle Mensual</Button>
+              </CashPaymentsModal>
+            </CardFooter>
+          </Card>
 
-           {/* Card para Pagos Efectivo/Transferencia --> NUEVO */}
-           <Card>
-             <CardHeader>
-               <CardTitle>Pagos Efectivo / Transferencia</CardTitle>
-               <CardDescription>
-                 Ver detalle de pagos realizados sin tarjeta.
-               </CardDescription>
-             </CardHeader>
-             <CardContent>
-               <p className="text-sm text-muted-foreground">
-                 Haz clic en el botón para ver el detalle por mes.
-               </p>
-             </CardContent>
-             <CardFooter>
-               <CashPaymentsModal>
-                 <Button variant="outline">Ver Detalle Mensual</Button>
-               </CashPaymentsModal>
-             </CardFooter>
-           </Card>
-
-           {/* Card para agregar tarjeta */}
-           <Card>
-             {/* ... (contenido de la Card 'Agregar Tarjeta' existente) ... */}
-           </Card>
+          {/* Card para agregar tarjeta */}
+          <Card>
+            {/* ... (contenido de la Card 'Agregar Tarjeta' existente) ... */}
+          </Card>
         </>
       )}
     </div>

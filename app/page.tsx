@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button"
-import { PlusCircle, BarChart3, CreditCard, Package, FileBarChart } from "lucide-react"
+import { PlusCircle, BarChart3, CreditCard, Package, FileBarChart, History } from "lucide-react"
 import Link from "next/link"
 import CompraConTarjetaDialog from "@/components/compra-con-tarjeta-dialog"
 import AddCardDialog from "@/components/add-card-dialog"
@@ -39,6 +39,13 @@ export default function Home() {
             <Button size="lg" variant="outline" className="w-full h-16 text-lg rounded-2xl">
               <Package className="mr-2 h-5 w-5" />
               Inventario
+            </Button>
+          </Link>
+
+          <Link href="/ventas" className="w-full">
+            <Button size="lg" variant="outline" className="w-full h-16 text-lg rounded-2xl">
+              <History className="mr-2 h-5 w-5" />
+              Historial de Ventas
             </Button>
           </Link>
 

@@ -36,8 +36,9 @@ import EditProductDialog from "@/components/edit-product-dialog";
 import ProductPurchasesDialog from "@/components/product-purchases-dialog";
 import CompraConTarjetaDialog from "@/components/compra-con-tarjeta-dialog";
 import { useToast } from "@/components/ui/use-toast";
-// import { queryClient } from "@/lib/queries"; // queryClient already available via useQueryClient
 import { Badge } from "@/components/ui/badge";
+import { RealizarVentaButton } from "@/components/ventas/RealizarVentaButton";
+// import { queryClient } from "@/lib/queries"; // queryClient already available via useQueryClient
 // import { v4 as uuidv4 } from "uuid"; // Not needed here anymore
 
 // Define the type for the product data received from Supabase
@@ -310,6 +311,7 @@ export default function InventarioPage() {
               Agregar producto
             </Button>
           </AddProductDialog>
+          <RealizarVentaButton />
         </div>
       </div>
 
