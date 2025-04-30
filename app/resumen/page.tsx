@@ -40,6 +40,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import PagosFuturosPorMes from "@/components/pagos-futuros-por-mes"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import CashPaymentsModal from "@/components/cash-payments-modal"
 
 // Definiciones de tipos existentes
 type Tarjeta = {
@@ -1034,6 +1035,31 @@ export default function ResumenPage() {
              </Accordion>
            )}
            {/* <<< --- FIN NUEVA SECCIÓN --- >>> */}
+
+           {/* Card para Pagos Efectivo/Transferencia --> NUEVO */}
+           <Card>
+             <CardHeader>
+               <CardTitle>Pagos Efectivo / Transferencia</CardTitle>
+               <CardDescription>
+                 Ver detalle de pagos realizados sin tarjeta.
+               </CardDescription>
+             </CardHeader>
+             <CardContent>
+               <p className="text-sm text-muted-foreground">
+                 Haz clic en el botón para ver el detalle por mes.
+               </p>
+             </CardContent>
+             <CardFooter>
+               <CashPaymentsModal>
+                 <Button variant="outline">Ver Detalle Mensual</Button>
+               </CashPaymentsModal>
+             </CardFooter>
+           </Card>
+
+           {/* Card para agregar tarjeta */}
+           <Card>
+             {/* ... (contenido de la Card 'Agregar Tarjeta' existente) ... */}
+           </Card>
         </>
       )}
     </div>
