@@ -9,6 +9,8 @@ import {
   PlusCircle,
   AlertTriangle,
   CreditCard,
+  Edit,
+  Eye,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase-browser";
@@ -38,8 +40,7 @@ import CompraConTarjetaDialog from "@/components/compra-con-tarjeta-dialog";
 import { useToast } from "@/components/ui/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { RealizarVentaButton } from "@/components/ventas/RealizarVentaButton";
-// import { queryClient } from "@/lib/queries"; // queryClient already available via useQueryClient
-// import { v4 as uuidv4 } from "uuid"; // Not needed here anymore
+import { cn } from "@/lib/utils";
 
 // Define the type for the product data received from Supabase
 type ProductoRaw = {
@@ -274,39 +275,27 @@ export default function InventarioPage() {
   };
 
   return (
-    <div className="container mx-auto py-8 px-4">
-      <div className="flex items-center justify-between mb-8">
+    <div className="container mx-auto py-6 px-2 sm:px-4 lg:px-8">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 sm:mb-8">
         <div className="flex items-center">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => router.push("/")}
-            className="mr-4"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Volver
+          <Button variant="ghost" size="icon" onClick={() => router.push("/")} className="mr-2 sm:mr-4 flex-shrink-0">
+            <ArrowLeft className="h-5 w-5" />
           </Button>
-          <h1 className="text-3xl font-bold text-primary">Inventario</h1>
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-primary truncate">Inventario</h1>
         </div>
-        <div className="flex space-x-2">
-          <Button variant="outline" onClick={() => router.push("/reportes")}>
+        <div className="flex flex-wrap justify-start sm:justify-end gap-2 w-full sm:w-auto">
+          <Button variant="outline" size="sm" onClick={() => router.push("/reportes")}>
             <AlertTriangle className="mr-2 h-4 w-4" />
-            Ver reportes
+            Reportes
           </Button>
-          {/* Assuming CompraConTarjetaDialog is for recording purchases/expenses */}
           <CompraConTarjetaDialog>
-             {/* The purpose of this dialog button is unclear in the context of "Inventario".
-                 If it's for recording expenses related to inventory purchases,
-                 it might be better placed contextually. Leaving it as is for now
-                 but note the potential confusion.
-             */}
-            <Button>
+            <Button size="sm">
               <CreditCard className="mr-2 h-4 w-4" />
               Registrar Compra
             </Button>
           </CompraConTarjetaDialog>
           <AddProductDialog>
-            <Button variant="outline">
+            <Button variant="outline" size="sm">
               <Plus className="mr-2 h-4 w-4" />
               Agregar producto
             </Button>
@@ -317,129 +306,187 @@ export default function InventarioPage() {
 
       {isLoading ? (
         <div className="space-y-4">
-          <Skeleton className="h-[400px] w-full rounded-2xl" />
+          <Skeleton className="h-[60px] w-full rounded-lg" />
+          <Skeleton className="h-[60px] w-full rounded-lg" />
+          <Skeleton className="h-[60px] w-full rounded-lg sm:hidden" />
         </div>
       ) : error ? (
-        <Card className="rounded-2xl shadow-sm">
+        <Card className="rounded-lg shadow-sm border-destructive">
           <CardHeader>
-            <CardTitle className="text-destructive">Error</CardTitle>
-            <CardDescription>
-              Ocurrió un error al cargar el inventario: {error.message}
-            </CardDescription>
+            <CardTitle className="text-destructive">Error al Cargar Inventario</CardTitle>
+            <CardDescription>{error.message}</CardDescription>
           </CardHeader>
         </Card>
       ) : !productos || productos.length === 0 ? (
         <EmptyState
           title="Sin productos registrados"
-          description="Agrega tu primer producto para empezar a gestionar tu inventario."
+          description="Agrega tu primer producto."
           action={
             <AddProductDialog>
-              <Button>Agregar producto</Button>
+              <Button size="sm">Agregar producto</Button>
             </AddProductDialog>
           }
         />
       ) : (
-        <Card className="rounded-2xl shadow-sm">
-          <CardHeader>
-            <CardTitle>Listado de productos</CardTitle>
-            <CardDescription>Gestiona tu inventario de productos</CardDescription>
-          </CardHeader>
-          <CardContent>
+        <div>
+          <div className="sm:hidden space-y-3">
+            {productos.map((producto) => (
+              <div
+                key={producto.id}
+                className={cn(
+                  "border rounded-lg p-4 bg-card shadow-sm flex flex-col",
+                  tieneStockCritico(producto) ? "border-red-300 bg-red-50" : ""
+                )}
+              >
+                <div className="flex justify-between items-start mb-3">
+                  <div className="flex-grow pr-2">
+                     <h3 className={cn(
+                         "font-medium text-base leading-tight",
+                          tieneStockCritico(producto) ? "text-red-700" : ""
+                       )}>
+                       {producto.nombre}
+                     </h3>
+                     {producto.categoria_nombre && (
+                        <Badge variant="outline" className="mt-1 text-xs">
+                          {producto.categoria_nombre}
+                        </Badge>
+                      )}
+                     <p className={cn(
+                          "text-xs mt-1",
+                          tieneStockCritico(producto) ? "text-red-600" : "text-muted-foreground"
+                        )}>
+                       SKU: {producto.sku || "-"}
+                     </p>
+                  </div>
+                   <div className={cn(
+                       "text-right flex-shrink-0 pl-2",
+                       tieneStockCritico(producto) ? "text-red-700" : ""
+                     )}>
+                     <p className="font-bold text-lg">{producto.stock}</p>
+                     <p className="text-xs text-muted-foreground">Stock</p>
+                   </div>
+                </div>
+
+                 <div className="flex justify-between items-center text-xs text-muted-foreground border-t pt-2 mb-3">
+                   <span>Costo: {producto.costo_unit ? `$${producto.costo_unit.toFixed(2)}` : "-"}</span>
+                   <span>Precio: {producto.precio_unit ? `$${producto.precio_unit.toFixed(2)}` : "-"}</span>
+                 </div>
+
+                <div className="flex items-center justify-end space-x-2 border-t pt-3 mt-auto">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="p-2 h-8 w-8"
+                    aria-label="Disminuir stock"
+                    onClick={() => updateStockMutation.mutate({ productoId: producto.id, incremento: -1 })}
+                    disabled={updateStockMutation.isPending || producto.stock <= 0}
+                  >
+                    <MinusCircle className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="p-2 h-8 w-8"
+                    aria-label="Aumentar stock"
+                    onClick={() => updateStockMutation.mutate({ productoId: producto.id, incremento: 1 })}
+                    disabled={updateStockMutation.isPending}
+                  >
+                    <PlusCircle className="h-4 w-4" />
+                  </Button>
+                  <EditProductDialog producto={producto}>
+                     <Button variant="outline" size="icon" className="p-2 h-8 w-8" aria-label="Editar producto">
+                        <Edit className="h-4 w-4" />
+                     </Button>
+                  </EditProductDialog>
+                  <ProductPurchasesDialog productoId={producto.id} productoNombre={producto.nombre}>
+                     <Button variant="outline" size="icon" className="p-2 h-8 w-8" aria-label="Ver compras producto">
+                        <Eye className="h-4 w-4" />
+                     </Button>
+                  </ProductPurchasesDialog>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="hidden sm:block overflow-x-auto rounded-lg border shadow-sm">
             <Table>
-              <TableHeader>
+              <TableHeader className="sticky top-0 bg-background z-10">
                 <TableRow>
-                  <TableHead>Nombre</TableHead>
-                  <TableHead>Categoría</TableHead>
-                  <TableHead>SKU</TableHead>
-                  <TableHead className="text-center">Stock</TableHead>
-                  <TableHead className="text-center">Stock Min</TableHead>
-                  <TableHead className="text-right">Costo unitario</TableHead>
-                  <TableHead className="text-right">Precio venta</TableHead>
-                  <TableHead className="text-center">Acciones</TableHead>
+                  <TableHead className="py-3 px-4">Nombre</TableHead>
+                  <TableHead className="py-3 px-4">Categoría</TableHead>
+                  <TableHead className="py-3 px-4">SKU</TableHead>
+                  <TableHead className="text-center py-3 px-4">Stock</TableHead>
+                  <TableHead className="text-center py-3 px-4">Stock Min</TableHead>
+                  <TableHead className="text-right py-3 px-4">Costo unit.</TableHead>
+                  <TableHead className="text-right py-3 px-4">Precio venta</TableHead>
+                  <TableHead className="text-center py-3 px-4">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {productos.map((producto) => (
                   <TableRow
                     key={producto.id}
-                    className={
-                      tieneStockCritico(producto)
-                        ? "bg-red-50 text-red-600"
-                        : ""
-                    }
+                    className={cn(
+                      tieneStockCritico(producto) ? "bg-red-50 text-red-600 hover:bg-red-100" : "hover:bg-muted/50"
+                    )}
                   >
-                    <TableCell className="font-medium">
+                    <TableCell className="font-medium py-3 px-4">
                       {producto.nombre}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="py-3 px-4">
                       {producto.categoria_nombre ? (
-                        <Badge variant="outline">
-                          {producto.categoria_nombre}
-                        </Badge>
-                      ) : (
-                        "-"
-                      )}
+                        <Badge variant="outline">{producto.categoria_nombre}</Badge>
+                      ) : "-"}
                     </TableCell>
-                    <TableCell>{producto.sku || "-"}</TableCell>
-                    <TableCell className="text-center">
-                      {producto.stock}
+                    <TableCell className="py-3 px-4">{producto.sku || "-"}</TableCell>
+                    <TableCell className="text-center py-3 px-4">{producto.stock}</TableCell>
+                    <TableCell className="text-center py-3 px-4">{producto.stock_min}</TableCell>
+                    <TableCell className="text-right py-3 px-4">
+                      {producto.costo_unit ? `$${producto.costo_unit.toFixed(2)}` : "-"}
                     </TableCell>
-                    <TableCell className="text-center">
-                      {producto.stock_min}
+                    <TableCell className="text-right py-3 px-4">
+                      {producto.precio_unit ? `$${producto.precio_unit.toFixed(2)}` : "-"}
                     </TableCell>
-                    <TableCell className="text-right">
-                      {producto.costo_unit
-                        ? `$${producto.costo_unit.toFixed(2)}`
-                        : "-"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {producto.precio_unit
-                        ? `$${producto.precio_unit.toFixed(2)}`
-                        : "-"}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center justify-center space-x-2">
+                    <TableCell className="py-2 px-4">
+                      <div className="flex items-center justify-center space-x-1">
                         <Button
-                          variant="outline"
+                          variant="ghost"
                           size="icon"
-                          onClick={() =>
-                            updateStockMutation.mutate({
-                              productoId: producto.id,
-                              incremento: -1,
-                            })
-                          }
-                          disabled={
-                            updateStockMutation.isPending || producto.stock <= 0
-                          }
+                          className="h-8 w-8"
+                          aria-label="Disminuir stock"
+                          onClick={() => updateStockMutation.mutate({ productoId: producto.id, incremento: -1 })}
+                          disabled={updateStockMutation.isPending || producto.stock <= 0}
                         >
                           <MinusCircle className="h-4 w-4" />
                         </Button>
                         <Button
-                          variant="outline"
+                          variant="ghost"
                           size="icon"
-                          onClick={() =>
-                            updateStockMutation.mutate({
-                              productoId: producto.id,
-                              incremento: 1,
-                            })
-                          }
+                          className="h-8 w-8"
+                          aria-label="Aumentar stock"
+                          onClick={() => updateStockMutation.mutate({ productoId: producto.id, incremento: 1 })}
                           disabled={updateStockMutation.isPending}
                         >
                           <PlusCircle className="h-4 w-4" />
                         </Button>
-                        <EditProductDialog producto={producto} />
-                        <ProductPurchasesDialog
-                          productoId={producto.id}
-                          productoNombre={producto.nombre}
-                        />
+                        <EditProductDialog producto={producto}>
+                            <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Editar producto">
+                                <Edit className="h-4 w-4" />
+                            </Button>
+                        </EditProductDialog>
+                        <ProductPurchasesDialog productoId={producto.id} productoNombre={producto.nombre}>
+                            <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Ver compras producto">
+                                <Eye className="h-4 w-4" />
+                            </Button>
+                        </ProductPurchasesDialog>
                       </div>
                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase-browser';
 import type { Cliente, CrearVentaParams, Venta, VentaItem, VentaPago } from '@/types/venta';
+import { endOfDay } from 'date-fns'; // Importar endOfDay
 
 // Hook para obtener lista de clientes
 export function useClientes() {
@@ -72,13 +73,22 @@ export function useCreateVenta() {
   });
 }
 
-// Hook para obtener historial de ventas
-export function useVentas() {
+// Interfaz para el rango de fechas del filtro
+interface DateFilterRange {
+  from?: Date;
+  to?: Date;
+}
+
+// Hook para obtener historial de ventas con filtro de fecha opcional
+export function useVentas(filterRange?: DateFilterRange) {
+  // Usar las fechas (convertidas a ISO string) en la queryKey para que React Query detecte cambios
+  const queryKey = ['ventas', filterRange?.from?.toISOString(), filterRange?.to?.toISOString()];
+
   return useQuery({
-    queryKey: ['ventas'],
+    queryKey: queryKey,
     queryFn: async () => {
       const supabase = createClient();
-      const { data, error } = await supabase
+      let query = supabase
         .from('ventas')
         .select(`
           *,
@@ -86,8 +96,21 @@ export function useVentas() {
         `)
         .order('fecha', { ascending: false });
 
+      // Aplicar filtros de fecha si existen
+      if (filterRange?.from) {
+        // Asegurarse de usar ISO string para la comparación en Supabase
+        query = query.gte('fecha', filterRange.from.toISOString());
+      }
+      if (filterRange?.to) {
+        // Incluir todo el día final usando endOfDay
+        const endOfDayTo = endOfDay(filterRange.to);
+        query = query.lte('fecha', endOfDayTo.toISOString());
+      }
+
+      const { data, error } = await query;
+
       if (error) throw error;
-      
+
       // Transformar los datos para ajustarlos a nuestra interfaz
       return (data || []).map((venta: any) => ({
         id: venta.id,
@@ -98,6 +121,7 @@ export function useVentas() {
         cliente: venta.clientes as any as Cliente
       })) as Venta[];
     }
+    // No es necesario 'enabled' aquí, la queryKey maneja el refetch
   });
 }
 

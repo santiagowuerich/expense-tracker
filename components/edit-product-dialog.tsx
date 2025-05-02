@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input"
 import { useToast } from "@/components/ui/use-toast"
 import { queryClient } from "@/lib/queries"
 import { Pencil } from "lucide-react"
+import type React from "react"
 
 const formSchema = z.object({
   costo_unit: z.coerce.number().min(0, "El costo no puede ser negativo").nullable(),
@@ -36,9 +37,10 @@ interface EditProductDialogProps {
     precio_unit: number | null
     stock_min?: number
   }
+  children?: React.ReactNode
 }
 
-export default function EditProductDialog({ producto }: EditProductDialogProps) {
+export default function EditProductDialog({ producto, children }: EditProductDialogProps) {
   const [open, setOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const { toast } = useToast()
@@ -98,9 +100,11 @@ export default function EditProductDialog({ producto }: EditProductDialogProps) 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon">
-          <Pencil className="h-4 w-4" />
-        </Button>
+        {children ? children : (
+          <Button variant="ghost" size="icon">
+            <Pencil className="h-4 w-4" />
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>

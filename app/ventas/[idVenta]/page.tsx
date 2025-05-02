@@ -2,46 +2,45 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useVentaDetalle } from "@/hooks/useVentas";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Separator } from "@/components/ui/separator";
-import { AlertTriangle, ArrowLeft, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { VentaItem as BaseVentaItem } from "@/types/venta";
+import { ArrowLeft, Loader2 } from "lucide-react";
 
-interface VentaItemConNombre extends BaseVentaItem {
-  producto_nombre?: string;
-}
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
+import { formatCurrency } from "@/hooks/useResumenCompras"; // Reutilizar helper si existe
 
-export default function DetalleVentaPage() {
+export default function VentaDetallePage() {
   const router = useRouter();
   const params = useParams();
-  const idVenta = params.idVenta as string;
+  const idVenta = params.idVenta as string; // Obtener ID de la ruta
 
   const { data: venta, isLoading, error } = useVentaDetalle(idVenta);
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("es-AR", {
-      style: "currency",
-      currency: "ARS",
-    }).format(amount);
-  };
-
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString: string | Date) => {
     try {
-      return format(new Date(dateString), "dd/MM/yyyy HH:mm", { locale: es });
+      const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
+      return format(date, "dd/MM/yyyy HH:mm", { locale: es });
     } catch {
       return "Fecha inválida";
     }
   };
 
+  // Función local para formatear moneda (si no se importa)
+  // const formatCurrency = (amount: number | null | undefined): string => {
+  //   if (amount === null || amount === undefined) return "-";
+  //   return new Intl.NumberFormat("es-AR", {
+  //     style: "currency",
+  //     currency: "ARS",
+  //   }).format(amount);
+  // };
+
   if (isLoading) {
     return (
-      <div className="container mx-auto py-8 px-4 flex justify-center items-center min-h-[300px]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="container mx-auto py-8 px-4 flex justify-center items-center min-h-screen">
+        <Loader2 className="h-16 w-16 animate-spin text-primary" />
       </div>
     );
   }
@@ -49,105 +48,81 @@ export default function DetalleVentaPage() {
   if (error) {
     return (
       <div className="container mx-auto py-8 px-4">
-        <Card className="rounded-2xl shadow-sm">
+        <Button variant="ghost" size="sm" onClick={() => router.push('/ventas')} className="mb-4">
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Volver al historial
+        </Button>
+        <Card className="border-destructive">
           <CardHeader>
-            <CardTitle className="text-destructive flex items-center">
-              <AlertTriangle className="mr-2 h-5 w-5" /> Error al cargar la venta
-            </CardTitle>
-            <CardDescription>{error.message}</CardDescription>
+            <CardTitle className="text-destructive">Error al cargar la Venta</CardTitle>
+            <CardDescription className="text-destructive">
+              No se pudo obtener el detalle de la venta. {error.message}
+            </CardDescription>
           </CardHeader>
-          <CardFooter>
-            <Button variant="outline" onClick={() => router.push('/ventas')}>
-              <ArrowLeft className="mr-2 h-4 w-4" /> Volver al Historial
-            </Button>
-          </CardFooter>
         </Card>
       </div>
     );
   }
 
   if (!venta) {
-    return (
+     return (
       <div className="container mx-auto py-8 px-4">
-         <Card className="rounded-2xl shadow-sm">
+        <Button variant="ghost" size="sm" onClick={() => router.push('/ventas')} className="mb-4">
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Volver al historial
+        </Button>
+        <Card>
           <CardHeader>
-            <CardTitle className="text-muted-foreground">Venta no encontrada</CardTitle>
-            <CardDescription>No se encontró la venta solicitada.</CardDescription>
+            <CardTitle>Venta no encontrada</CardTitle>
+            <CardDescription>
+              No se encontró una venta con el ID proporcionado.
+            </CardDescription>
           </CardHeader>
-           <CardFooter>
-            <Button variant="outline" onClick={() => router.push('/ventas')}>
-              <ArrowLeft className="mr-2 h-4 w-4" /> Volver al Historial
-            </Button>
-          </CardFooter>
         </Card>
       </div>
     );
   }
 
+  // Renderizar detalle de la venta
   return (
-    <div className="container mx-auto py-8 px-4">
-       <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => router.push('/ventas')} // Ir al historial
-            className="mr-4"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Volver al Historial
-          </Button>
-          <h1 className="text-3xl font-bold text-primary">Detalle de Venta</h1>
-        </div>
+    <div className="container mx-auto py-8 px-4 max-w-4xl"> {/* Limitar ancho máximo */}
+      {/* Botón Volver y Encabezado */}
+      <div className="flex items-center justify-between mb-6">
+        <Button variant="ghost" size="sm" onClick={() => router.push('/ventas')}>
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Volver al historial
+        </Button>
+         <div className="text-right text-sm text-muted-foreground">
+             <p>ID Venta: {venta.id}</p>
+             <p>Fecha: {formatDate(venta.fecha)}</p>
+         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Columna Datos Cliente y Pagos */}
-        <div className="lg:col-span-1 flex flex-col gap-6">
-          {/* Card Datos Cliente */}
-          <Card className="rounded-2xl shadow-sm">
-            <CardHeader>
-              <CardTitle>Datos del Cliente</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <p><strong>Nombre:</strong> {venta.cliente?.nombre}</p>
-              <p><strong>DNI/CUIT:</strong> {venta.cliente?.dni_cuit}</p>
-              {venta.cliente?.direccion && <p><strong>Dirección:</strong> {venta.cliente.direccion}</p>}
-              {venta.cliente?.ciudad && <p><strong>Ciudad:</strong> {venta.cliente.ciudad}</p>}
-              {venta.cliente?.codigo_postal && <p><strong>Cód. Postal:</strong> {venta.cliente.codigo_postal}</p>}
-              {venta.cliente?.telefono && <p><strong>Teléfono:</strong> {venta.cliente.telefono}</p>}
-              {venta.cliente?.email && <p><strong>Email:</strong> {venta.cliente.email}</p>}
-            </CardContent>
-          </Card>
+      <h1 className="text-2xl sm:text-3xl font-bold text-primary mb-8 text-center">Detalle de Venta</h1>
 
-          {/* Card Métodos de Pago (NUEVO) */}
-          {venta.pagos && venta.pagos.length > 0 && (
-            <Card className="rounded-2xl shadow-sm">
-              <CardHeader>
-                <CardTitle>Métodos de Pago Utilizados</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2">
-                  {venta.pagos.map((pago, index) => (
-                    <li key={index} className="flex justify-between items-center text-sm">
-                      <span>{pago.metodo_pago}</span>
-                      <span className="font-medium">{formatCurrency(pago.monto)}</span>
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
-          )}
-        </div>
+      {/* Datos del Cliente */}
+      <Card className="mb-8 rounded-lg shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-xl">Datos del Cliente</CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 text-sm">
+          <div><span className="font-medium">Nombre:</span> {venta.cliente?.nombre || "N/A"}</div>
+          <div><span className="font-medium">DNI/CUIT:</span> {venta.cliente?.dni_cuit || "N/A"}</div>
+          <div><span className="font-medium">Dirección:</span> {venta.cliente?.direccion || "N/A"}</div>
+          <div><span className="font-medium">Ciudad:</span> {venta.cliente?.ciudad || "N/A"}</div>
+          <div><span className="font-medium">Código Postal:</span> {venta.cliente?.codigo_postal || "N/A"}</div>
+          <div><span className="font-medium">Teléfono:</span> {venta.cliente?.telefono || "N/A"}</div>
+          <div className="sm:col-span-2"><span className="font-medium">Email:</span> {venta.cliente?.email || "N/A"}</div>
+        </CardContent>
+      </Card>
 
-        {/* Columna Items y Total */}
-        <div className="lg:col-span-2">
-          <Card className="rounded-2xl shadow-sm">
-            <CardHeader>
-              <CardTitle>Productos Vendidos</CardTitle>
-              <CardDescription>Fecha de venta: {formatDate(venta.fecha)}</CardDescription>
-            </CardHeader>
-            <CardContent>
+      {/* Productos Vendidos */}
+      <Card className="rounded-lg shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-xl">Productos Vendidos</CardTitle>
+        </CardHeader>
+        <CardContent>
+           <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -158,26 +133,44 @@ export default function DetalleVentaPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(venta?.items as VentaItemConNombre[] | undefined)?.map((item, index) => (
-                    <TableRow key={index}>
+                  {(venta.items || []).map((item, index) => (
+                    <TableRow key={`${item.producto_id}-${index}`}>
                       <TableCell className="font-medium">{item.producto_nombre || "Producto no encontrado"}</TableCell>
                       <TableCell className="text-center">{item.cantidad}</TableCell>
                       <TableCell className="text-right">{formatCurrency(item.precio_unitario)}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(item.subtotal || 0)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(item.subtotal)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
-            </CardContent>
-            <CardFooter className="flex justify-end pt-4 border-t">
-              <div className="text-right">
-                <p className="text-lg font-medium">Total Venta:</p>
-                <p className="text-2xl font-bold">{formatCurrency(venta.total)}</p>
-              </div>
-            </CardFooter>
+           </div>
+        </CardContent>
+        <CardFooter className="flex justify-end pt-4 border-t">
+             <div className="text-lg font-bold">
+                 Total Venta: {formatCurrency(venta.total)}
+             </div>
+        </CardFooter>
+      </Card>
+
+      {/* Desglose de Pagos */}
+      {venta.pagos && venta.pagos.length > 0 && (
+          <Card className="mt-8 rounded-lg shadow-sm">
+              <CardHeader>
+                  <CardTitle className="text-xl">Formas de Pago</CardTitle>
+              </CardHeader>
+              <CardContent>
+                  <ul className="space-y-2 text-sm">
+                      {venta.pagos.map((pago, index) => (
+                          <li key={index} className="flex justify-between items-center border-b last:border-b-0 pb-1">
+                              <span className="capitalize">{pago.metodo_pago.replace("_", " ")}</span>
+                              <span className="font-medium">{formatCurrency(pago.monto)}</span>
+                          </li>
+                      ))}
+                  </ul>
+              </CardContent>
           </Card>
-        </div>
-      </div>
+       )}
+
     </div>
   );
 } 

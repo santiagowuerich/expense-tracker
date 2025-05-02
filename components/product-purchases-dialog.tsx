@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/components/ui/use-toast"
 import PaymentDetailsDialog from "./payment-details-dialog"
 import PurchaseDetailsDialog from "./purchase-details-dialog"
+import type React from "react"
 
 type ProductPurchase = {
   id: string
@@ -42,9 +43,10 @@ type PriceHistory = {
 interface ProductPurchasesDialogProps {
   productoId: string
   productoNombre: string
+  children?: React.ReactNode
 }
 
-export default function ProductPurchasesDialog({ productoId, productoNombre }: ProductPurchasesDialogProps) {
+export default function ProductPurchasesDialog({ productoId, productoNombre, children }: ProductPurchasesDialogProps) {
   const [open, setOpen] = useState(false)
   const { toast } = useToast()
 
@@ -55,7 +57,7 @@ export default function ProductPurchasesDialog({ productoId, productoNombre }: P
     refetch: refetchCompras,
   } = useQuery<ProductPurchase[]>({
     queryKey: ["compras", productoId],
-    queryFn: async () => {
+    queryFn: async (): Promise<ProductPurchase[]> => {
       try {
         const supabase = createClient()
 
@@ -89,13 +91,22 @@ export default function ProductPurchasesDialog({ productoId, productoNombre }: P
           throw new Error(error.message)
         }
 
-        return data || []
+        // Mapear explícitamente para asegurar el tipo
+        const typedData: ProductPurchase[] = (data || []).map(item => ({
+            id: String(item.id),
+            created_at: String(item.created_at),
+            costo_unit: Number(item.costo_unit),
+            cantidad: Number(item.cantidad),
+            restante: Number(item.restante)
+        }));
+        return typedData;
+
       } catch (error: any) {
         console.error("Error al cargar compras:", error)
         return []
       }
     },
-    enabled: open, // Solo ejecutar la consulta cuando el diálogo está abierto
+    enabled: open,
   })
 
   const {
@@ -105,7 +116,7 @@ export default function ProductPurchasesDialog({ productoId, productoNombre }: P
     refetch: refetchHistorial,
   } = useQuery<PriceHistory[]>({
     queryKey: ["price-history", productoId],
-    queryFn: async () => {
+    queryFn: async (): Promise<PriceHistory[]> => {
       try {
         const supabase = createClient()
 
@@ -139,13 +150,22 @@ export default function ProductPurchasesDialog({ productoId, productoNombre }: P
           throw new Error(error.message)
         }
 
-        return data || []
+        // Mapear explícitamente para asegurar el tipo
+        const typedData: PriceHistory[] = (data || []).map(item => ({
+            id: String(item.id),
+            tipo: String(item.tipo),
+            precio: Number(item.precio),
+            created_at: String(item.created_at),
+            compra_id: item.compra_id ? String(item.compra_id) : null
+        }));
+        return typedData;
+
       } catch (error: any) {
         console.error("Error al cargar historial de precios:", error)
         return []
       }
     },
-    enabled: open, // Solo ejecutar la consulta cuando el diálogo está abierto
+    enabled: open,
   })
 
   return (
@@ -154,15 +174,17 @@ export default function ProductPurchasesDialog({ productoId, productoNombre }: P
       onOpenChange={(newOpen) => {
         setOpen(newOpen)
         if (newOpen) {
-          refetchCompras() // Refrescar las compras cuando se abre el diálogo
-          refetchHistorial() // Refrescar el historial de precios
+          refetchCompras()
+          refetchHistorial()
         }
       }}
     >
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon">
-          <Eye className="h-4 w-4" />
-        </Button>
+        {children ? children : (
+          <Button variant="ghost" size="icon">
+            <Eye className="h-4 w-4" />
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-[700px]">
         <DialogHeader>
@@ -198,7 +220,7 @@ export default function ProductPurchasesDialog({ productoId, productoNombre }: P
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {compras.map((compra) => (
+                  {compras.map((compra: ProductPurchase) => (
                     <TableRow key={compra.id}>
                       <TableCell>{format(parseISO(compra.created_at), "d MMM yyyy", { locale: es })}</TableCell>
                       <TableCell className="text-right">${compra.costo_unit.toFixed(2)}</TableCell>
@@ -241,7 +263,7 @@ export default function ProductPurchasesDialog({ productoId, productoNombre }: P
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {historialPrecios.map((item) => (
+                  {historialPrecios.map((item: PriceHistory) => (
                     <TableRow key={item.id}>
                       <TableCell>{format(parseISO(item.created_at), "d MMM yyyy", { locale: es })}</TableCell>
                       <TableCell>

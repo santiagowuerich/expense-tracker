@@ -24,7 +24,8 @@ import { Switch } from "@/components/ui/switch"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { v4 as uuidv4 } from "uuid"
 import AddProductDialog from "@/components/add-product-dialog"
-import { PlusSquare } from "lucide-react"
+import { PlusSquare, Plus } from "lucide-react"
+import AddCardDialog from "./add-card-dialog"
 
 type Tarjeta = {
   id: string
@@ -261,15 +262,19 @@ export default function CompraConTarjetaDialog({ children }: CompraConTarjetaDia
         }
       }}
     >
-      <DialogTrigger asChild>{children}</DialogTrigger>
-      <DialogContent className="sm:max-w-[425px]">
-        <DialogHeader>
-          <DialogTitle>Registrar Compra</DialogTitle>
-          <DialogDescription>Registra una compra de producto para el inventario.</DialogDescription>
+      <DialogTrigger asChild>
+        {children || <Button>Registrar Compra</Button>}
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto p-4 sm:p-6">
+        <DialogHeader className="pr-8">
+          <DialogTitle>Registrar Nueva Compra</DialogTitle>
+          <DialogDescription>
+            Ingresa los detalles de la compra para actualizar el inventario y registrar el gasto.
+          </DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 py-4">
             <FormField
               control={form.control}
               name="payment_method"
@@ -313,33 +318,44 @@ export default function CompraConTarjetaDialog({ children }: CompraConTarjetaDia
                 name="tarjeta_id"
                 render={({ field }) => (
                   <FormItem className="grid grid-cols-4 items-center gap-4">
-                    <FormLabel className="text-right">Tarjeta</FormLabel>
+                    <FormLabel className="text-right flex items-center justify-end">
+                      Tarjeta
+                      <AddCardDialog>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="ml-1 h-6 w-6"
+                          aria-label="Agregar nueva tarjeta"
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </AddCardDialog>
+                    </FormLabel>
                     <div className="col-span-3">
-                      <Select value={field.value} onValueChange={field.onChange}>
+                      <Select
+                        value={field.value ?? ''}
+                        onValueChange={field.onChange}
+                        disabled={isLoadingTarjetas}
+                      >
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Seleccionar tarjeta" />
+                            <SelectValue placeholder={isLoadingTarjetas ? "Cargando tarjetas..." : "Seleccionar tarjeta"} />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
                           {isLoadingTarjetas ? (
-                            <SelectItem value="loading" disabled>
-                              Cargando tarjetas...
-                            </SelectItem>
+                            <SelectItem value="loading" disabled>Cargando...</SelectItem>
                           ) : errorTarjetas ? (
-                            <SelectItem value="error" disabled>
-                              Error al cargar tarjetas
-                            </SelectItem>
-                          ) : tarjetas && tarjetas.length > 0 ? (
+                            <SelectItem value="error" disabled>Error al cargar</SelectItem>
+                          ) : Array.isArray(tarjetas) && tarjetas.length > 0 ? (
                             tarjetas.map((tarjeta) => (
                               <SelectItem key={tarjeta.id} value={tarjeta.id}>
                                 {tarjeta.alias}
                               </SelectItem>
                             ))
                           ) : (
-                            <SelectItem value="empty" disabled>
-                              No hay tarjetas disponibles
-                            </SelectItem>
+                            <SelectItem value="empty" disabled>No hay tarjetas</SelectItem>
                           )}
                         </SelectContent>
                       </Select>
@@ -548,7 +564,7 @@ export default function CompraConTarjetaDialog({ children }: CompraConTarjetaDia
 
             <DialogFooter>
               <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Guardando..." : "Registrar Compra"}
+                {isSubmitting ? "Registrando..." : "Registrar Compra"}
               </Button>
             </DialogFooter>
           </form>
