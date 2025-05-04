@@ -41,6 +41,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { RealizarVentaButton } from "@/components/ventas/RealizarVentaButton";
 import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
 
 // Define the type for the product data received from Supabase
 type ProductoRaw = {
@@ -73,6 +74,7 @@ export default function InventarioPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient(); // Get queryClient instance
   const [stockBajoAlertado, setStockBajoAlertado] = useState(false);
+  const [busqueda, setBusqueda] = useState("");
 
   // Fetch products using react-query
   const {
@@ -274,6 +276,13 @@ export default function InventarioPage() {
     return producto.stock_min > 0 && producto.stock <= producto.stock_min;
   };
 
+  // Filtrar productos según la búsqueda
+  const productosFiltrados = productos?.filter(p => 
+    p.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
+    (p.sku && p.sku.toLowerCase().includes(busqueda.toLowerCase())) ||
+    (p.categoria_nombre && p.categoria_nombre.toLowerCase().includes(busqueda.toLowerCase()))
+  ) || [];
+
   return (
     <div className="container mx-auto py-6 px-2 sm:px-4 lg:px-8">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 sm:mb-8">
@@ -329,162 +338,188 @@ export default function InventarioPage() {
         />
       ) : (
         <div>
-          <div className="sm:hidden space-y-3">
-            {productos.map((producto) => (
-              <div
-                key={producto.id}
-                className={cn(
-                  "border rounded-lg p-4 bg-card shadow-sm flex flex-col",
-                  tieneStockCritico(producto) ? "border-red-300 bg-red-50" : ""
-                )}
-              >
-                <div className="flex justify-between items-start mb-3">
-                  <div className="flex-grow pr-2">
-                     <h3 className={cn(
-                         "font-medium text-base leading-tight",
-                          tieneStockCritico(producto) ? "text-red-700" : ""
-                       )}>
-                       {producto.nombre}
-                     </h3>
-                     {producto.categoria_nombre && (
-                        <Badge variant="outline" className="mt-1 text-xs">
-                          {producto.categoria_nombre}
-                        </Badge>
-                      )}
-                     <p className={cn(
-                          "text-xs mt-1",
-                          tieneStockCritico(producto) ? "text-red-600" : "text-muted-foreground"
-                        )}>
-                       SKU: {producto.sku || "-"}
-                     </p>
-                  </div>
-                   <div className={cn(
-                       "text-right flex-shrink-0 pl-2",
-                       tieneStockCritico(producto) ? "text-red-700" : ""
-                     )}>
-                     <p className="font-bold text-lg">{producto.stock}</p>
-                     <p className="text-xs text-muted-foreground">Stock</p>
-                   </div>
-                </div>
-
-                 <div className="flex justify-between items-center text-xs text-muted-foreground border-t pt-2 mb-3">
-                   <span>Costo: {producto.costo_unit ? `$${producto.costo_unit.toFixed(2)}` : "-"}</span>
-                   <span>Precio: {producto.precio_unit ? `$${producto.precio_unit.toFixed(2)}` : "-"}</span>
-                 </div>
-
-                <div className="flex items-center justify-end space-x-2 border-t pt-3 mt-auto">
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="p-2 h-8 w-8"
-                    aria-label="Disminuir stock"
-                    onClick={() => updateStockMutation.mutate({ productoId: producto.id, incremento: -1 })}
-                    disabled={updateStockMutation.isPending || producto.stock <= 0}
-                  >
-                    <MinusCircle className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="p-2 h-8 w-8"
-                    aria-label="Aumentar stock"
-                    onClick={() => updateStockMutation.mutate({ productoId: producto.id, incremento: 1 })}
-                    disabled={updateStockMutation.isPending}
-                  >
-                    <PlusCircle className="h-4 w-4" />
-                  </Button>
-                  <EditProductDialog producto={producto}>
-                     <Button variant="outline" size="icon" className="p-2 h-8 w-8" aria-label="Editar producto">
-                        <Edit className="h-4 w-4" />
-                     </Button>
-                  </EditProductDialog>
-                  <ProductPurchasesDialog productoId={producto.id} productoNombre={producto.nombre}>
-                     <Button variant="outline" size="icon" className="p-2 h-8 w-8" aria-label="Ver compras producto">
-                        <Eye className="h-4 w-4" />
-                     </Button>
-                  </ProductPurchasesDialog>
-                </div>
+          <div className="sm:hidden space-y-3 pb-8 overflow-y-auto max-h-screen">
+            <Input
+              className="w-full px-4 py-2 mb-4 rounded border bg-card text-base focus:ring-primary focus:border-primary"
+              placeholder="Buscar producto..."
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+            />
+            {productosFiltrados.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No se encontraron productos para "{busqueda}"
               </div>
-            ))}
+            ) : (
+              productosFiltrados.map((producto) => (
+                <div
+                  key={producto.id}
+                  className={cn(
+                    "border rounded-lg p-4 bg-card shadow-sm flex flex-col",
+                    tieneStockCritico(producto) ? "border-red-300 bg-red-50" : ""
+                  )}
+                >
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="flex-grow pr-2">
+                       <h3 className={cn(
+                           "font-medium text-base leading-tight",
+                            tieneStockCritico(producto) ? "text-red-700" : ""
+                         )}>
+                         {producto.nombre}
+                       </h3>
+                       {producto.categoria_nombre && (
+                          <Badge variant="outline" className="mt-1 text-xs">
+                            {producto.categoria_nombre}
+                          </Badge>
+                        )}
+                       <p className={cn(
+                            "text-xs mt-1",
+                            tieneStockCritico(producto) ? "text-red-600" : "text-muted-foreground"
+                          )}>
+                         SKU: {producto.sku || "-"}
+                       </p>
+                    </div>
+                     <div className={cn(
+                         "text-right flex-shrink-0 pl-2",
+                         tieneStockCritico(producto) ? "text-red-700" : ""
+                       )}>
+                       <p className="font-bold text-lg">{producto.stock}</p>
+                       <p className="text-xs text-muted-foreground">Stock</p>
+                     </div>
+                  </div>
+
+                   <div className="flex justify-between items-center text-xs text-muted-foreground border-t pt-2 mb-3">
+                     <span>Costo: {producto.costo_unit ? `$${producto.costo_unit.toFixed(2)}` : "-"}</span>
+                     <span>Precio: {producto.precio_unit ? `$${producto.precio_unit.toFixed(2)}` : "-"}</span>
+                   </div>
+
+                  <div className="flex items-center justify-end space-x-2 border-t pt-3 mt-auto">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="p-2 h-8 w-8"
+                      aria-label="Disminuir stock"
+                      onClick={() => updateStockMutation.mutate({ productoId: producto.id, incremento: -1 })}
+                      disabled={updateStockMutation.isPending || producto.stock <= 0}
+                    >
+                      <MinusCircle className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="p-2 h-8 w-8"
+                      aria-label="Aumentar stock"
+                      onClick={() => updateStockMutation.mutate({ productoId: producto.id, incremento: 1 })}
+                      disabled={updateStockMutation.isPending}
+                    >
+                      <PlusCircle className="h-4 w-4" />
+                    </Button>
+                    <EditProductDialog producto={producto}>
+                       <Button variant="outline" size="icon" className="p-2 h-8 w-8" aria-label="Editar producto">
+                          <Edit className="h-4 w-4" />
+                       </Button>
+                    </EditProductDialog>
+                    <ProductPurchasesDialog productoId={producto.id} productoNombre={producto.nombre}>
+                       <Button variant="outline" size="icon" className="p-2 h-8 w-8" aria-label="Ver compras producto">
+                          <Eye className="h-4 w-4" />
+                       </Button>
+                    </ProductPurchasesDialog>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
 
-          <div className="hidden sm:block overflow-x-auto rounded-lg border shadow-sm">
-            <Table>
-              <TableHeader className="sticky top-0 bg-background z-10">
-                <TableRow>
-                  <TableHead className="py-3 px-4">Nombre</TableHead>
-                  <TableHead className="py-3 px-4">Categoría</TableHead>
-                  <TableHead className="py-3 px-4">SKU</TableHead>
-                  <TableHead className="text-center py-3 px-4">Stock</TableHead>
-                  <TableHead className="text-center py-3 px-4">Stock Min</TableHead>
-                  <TableHead className="text-right py-3 px-4">Costo unit.</TableHead>
-                  <TableHead className="text-right py-3 px-4">Precio venta</TableHead>
-                  <TableHead className="text-center py-3 px-4">Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {productos.map((producto) => (
-                  <TableRow
-                    key={producto.id}
-                    className={cn(
-                      tieneStockCritico(producto) ? "bg-red-50 text-red-600 hover:bg-red-100" : "hover:bg-muted/50"
-                    )}
-                  >
-                    <TableCell className="font-medium py-3 px-4">
-                      {producto.nombre}
-                    </TableCell>
-                    <TableCell className="py-3 px-4">
-                      {producto.categoria_nombre ? (
-                        <Badge variant="outline">{producto.categoria_nombre}</Badge>
-                      ) : "-"}
-                    </TableCell>
-                    <TableCell className="py-3 px-4">{producto.sku || "-"}</TableCell>
-                    <TableCell className="text-center py-3 px-4">{producto.stock}</TableCell>
-                    <TableCell className="text-center py-3 px-4">{producto.stock_min}</TableCell>
-                    <TableCell className="text-right py-3 px-4">
-                      {producto.costo_unit ? `$${producto.costo_unit.toFixed(2)}` : "-"}
-                    </TableCell>
-                    <TableCell className="text-right py-3 px-4">
-                      {producto.precio_unit ? `$${producto.precio_unit.toFixed(2)}` : "-"}
-                    </TableCell>
-                    <TableCell className="py-2 px-4">
-                      <div className="flex items-center justify-center space-x-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          aria-label="Disminuir stock"
-                          onClick={() => updateStockMutation.mutate({ productoId: producto.id, incremento: -1 })}
-                          disabled={updateStockMutation.isPending || producto.stock <= 0}
-                        >
-                          <MinusCircle className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          aria-label="Aumentar stock"
-                          onClick={() => updateStockMutation.mutate({ productoId: producto.id, incremento: 1 })}
-                          disabled={updateStockMutation.isPending}
-                        >
-                          <PlusCircle className="h-4 w-4" />
-                        </Button>
-                        <EditProductDialog producto={producto}>
-                            <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Editar producto">
-                                <Edit className="h-4 w-4" />
+          <div className="hidden sm:block">
+            <Input
+              className="w-full px-4 py-2 mb-4 rounded border bg-card text-base focus:ring-primary focus:border-primary"
+              placeholder="Buscar producto..."
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+            />
+            {productosFiltrados.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground border rounded-lg shadow-sm">
+                No se encontraron productos para "{busqueda}"
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-lg border shadow-sm">
+                <Table>
+                  <TableHeader className="sticky top-0 bg-background z-10">
+                    <TableRow>
+                      <TableHead className="py-3 px-4">Nombre</TableHead>
+                      <TableHead className="py-3 px-4">Categoría</TableHead>
+                      <TableHead className="py-3 px-4">SKU</TableHead>
+                      <TableHead className="text-center py-3 px-4">Stock</TableHead>
+                      <TableHead className="text-center py-3 px-4">Stock Min</TableHead>
+                      <TableHead className="text-right py-3 px-4">Costo unit.</TableHead>
+                      <TableHead className="text-right py-3 px-4">Precio venta</TableHead>
+                      <TableHead className="text-center py-3 px-4">Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {productosFiltrados.map((producto) => (
+                      <TableRow
+                        key={producto.id}
+                        className={cn(
+                          tieneStockCritico(producto) ? "bg-red-50 text-red-600 hover:bg-red-100" : "hover:bg-muted/50"
+                        )}
+                      >
+                        <TableCell className="font-medium py-3 px-4">
+                          {producto.nombre}
+                        </TableCell>
+                        <TableCell className="py-3 px-4">
+                          {producto.categoria_nombre ? (
+                            <Badge variant="outline">{producto.categoria_nombre}</Badge>
+                          ) : "-"}
+                        </TableCell>
+                        <TableCell className="py-3 px-4">{producto.sku || "-"}</TableCell>
+                        <TableCell className="text-center py-3 px-4">{producto.stock}</TableCell>
+                        <TableCell className="text-center py-3 px-4">{producto.stock_min}</TableCell>
+                        <TableCell className="text-right py-3 px-4">
+                          {producto.costo_unit ? `$${producto.costo_unit.toFixed(2)}` : "-"}
+                        </TableCell>
+                        <TableCell className="text-right py-3 px-4">
+                          {producto.precio_unit ? `$${producto.precio_unit.toFixed(2)}` : "-"}
+                        </TableCell>
+                        <TableCell className="py-2 px-4">
+                          <div className="flex items-center justify-center space-x-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              aria-label="Disminuir stock"
+                              onClick={() => updateStockMutation.mutate({ productoId: producto.id, incremento: -1 })}
+                              disabled={updateStockMutation.isPending || producto.stock <= 0}
+                            >
+                              <MinusCircle className="h-4 w-4" />
                             </Button>
-                        </EditProductDialog>
-                        <ProductPurchasesDialog productoId={producto.id} productoNombre={producto.nombre}>
-                            <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Ver compras producto">
-                                <Eye className="h-4 w-4" />
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              aria-label="Aumentar stock"
+                              onClick={() => updateStockMutation.mutate({ productoId: producto.id, incremento: 1 })}
+                              disabled={updateStockMutation.isPending}
+                            >
+                              <PlusCircle className="h-4 w-4" />
                             </Button>
-                        </ProductPurchasesDialog>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                            <EditProductDialog producto={producto}>
+                                <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Editar producto">
+                                    <Edit className="h-4 w-4" />
+                                </Button>
+                            </EditProductDialog>
+                            <ProductPurchasesDialog productoId={producto.id} productoNombre={producto.nombre}>
+                                <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Ver compras producto">
+                                    <Eye className="h-4 w-4" />
+                                </Button>
+                            </ProductPurchasesDialog>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
           </div>
         </div>
       )}
