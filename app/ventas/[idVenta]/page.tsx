@@ -4,13 +4,15 @@ import { useParams, useRouter } from "next/navigation";
 import { useVentaDetalle } from "@/hooks/useVentas";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, DownloadCloud, Share2, FileText } from "lucide-react";
+import { BsWhatsapp } from 'react-icons/bs';
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency } from "@/hooks/useResumenCompras"; // Reutilizar helper si existe
+import { usePdfActions } from "@/hooks/usePdfActions"; // Importar el nuevo hook
 
 export default function VentaDetallePage() {
   const router = useRouter();
@@ -18,6 +20,17 @@ export default function VentaDetallePage() {
   const idVenta = params.idVenta as string; // Obtener ID de la ruta
 
   const { data: venta, isLoading, error } = useVentaDetalle(idVenta);
+  // Usar el hook de acciones PDF
+  const { 
+    generatePdf,
+    // downloadPdf, // generatePdf con triggerDownload=true ya descarga. downloadPdf es para redescargar si ya existe blob.
+    sharePdf,
+    shareWhatsApp,
+    isGenerating: isPdfGenerating, // Renombrar para evitar conflicto con isLoading de useVentaDetalle
+    // isLoadingData: isLoadingPdfData, // Podríamos usarlo para deshabilitar botones si los datos base (perfil) no cargan
+    // dataError: pdfDataError, // Para mostrar errores específicos de carga de datos para PDF
+    pdfGenerated 
+  } = usePdfActions(idVenta);
 
   const formatDate = (dateString: string | Date) => {
     try {
@@ -99,6 +112,43 @@ export default function VentaDetallePage() {
       </div>
 
       <h1 className="text-2xl sm:text-3xl font-bold text-primary mb-8 text-center">Detalle de Venta</h1>
+
+      {/* NUEVA SECCIÓN: Acciones del Comprobante */}
+      {venta && (
+        <Card className="my-8 rounded-lg shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-xl">Acciones del Comprobante</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col sm:flex-row gap-3">
+            <Button 
+              onClick={() => generatePdf(true)} 
+              disabled={isPdfGenerating || isLoading} // Deshabilitar si carga datos de venta o genera PDF
+              className="w-full sm:w-auto"
+            >
+              {isPdfGenerating && !pdfGenerated ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <DownloadCloud className="mr-2 h-4 w-4" />}
+              {isPdfGenerating && !pdfGenerated ? 'Generando PDF...' : (pdfGenerated ? 'Descargar de Nuevo' : 'Generar y Descargar PDF')}
+            </Button>
+            <Button 
+              onClick={sharePdf} 
+              disabled={isPdfGenerating || isLoading}
+              variant="outline"
+              className="w-full sm:w-auto"
+            >
+              {isPdfGenerating && !pdfGenerated ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Share2 className="mr-2 h-4 w-4" />}
+              Compartir PDF
+            </Button>
+            <Button 
+              onClick={shareWhatsApp} 
+              disabled={isPdfGenerating || isLoading || !venta.cliente?.telefono}
+              variant="outline"
+              className="w-full sm:w-auto flex items-center justify-center border-green-500 text-green-500 hover:bg-green-500 hover:text-white"
+            >
+              {isPdfGenerating && !pdfGenerated ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <BsWhatsapp className="mr-2 h-5 w-5" />}
+              Enviar por WhatsApp
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Datos del Cliente */}
       <Card className="mb-8 rounded-lg shadow-sm">
