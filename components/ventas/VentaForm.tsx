@@ -15,8 +15,9 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Loader2, Trash2, AlertCircle } from "lucide-react";
-import { ProductoParaVenta, VentaPago } from "@/types/venta";
 import { Checkbox } from "@/components/ui/checkbox";
+import ConfirmationPdfModal from "@/components/confirmation-pdf-modal";
+import { Textarea } from "@/components/ui/textarea";
 
 // Métodos de pago disponibles
 const METODOS_PAGO = [
@@ -53,6 +54,8 @@ const ventaFormSchema = z.object({
       monto: z.coerce.number().min(0, { message: "El monto no puede ser negativo" }),
     })
   ).optional(), // Opcional inicialmente, se valida con refine
+  mensajeInterno: z.string().optional(),
+  mensajeExterno: z.string().optional(),
 })
 .refine((data) => {
   // Calcular total de items
@@ -73,14 +76,28 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
   const { toast } = useToast();
   const createVenta = useCreateVenta();
   const { data: productos, isLoading: isLoadingProductos } = useProductos();
-  const [productosDisponibles, setProductosDisponibles] = useState<ProductoParaVenta[]>([]);
+  const [productosDisponibles, setProductosDisponibles] = useState<any[]>([]);
+
+  // Estados para el nuevo modal de PDF
+  const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+  const [generatedVentaId, setGeneratedVentaId] = useState<string | number | undefined>(undefined);
 
   const form = useForm<VentaFormValues>({
     resolver: zodResolver(ventaFormSchema),
     defaultValues: {
-      cliente: { nombre: "", dni_cuit: "" },
+      cliente: { 
+        nombre: "", 
+        dni_cuit: "",
+        direccion: "", // Inicializar explícitamente los opcionales a ""
+        ciudad: "",      // Inicializar explícitamente los opcionales a ""
+        codigo_postal: "",// Inicializar explícitamente los opcionales a ""
+        telefono: "",   // Inicializar explícitamente los opcionales a ""
+        email: "",       // Inicializar explícitamente los opcionales a ""
+      },
       items: [{ producto_id: "", cantidad: 1, precio_unitario: 0 }],
-      pagos: [], // Inicializar vacío
+      pagos: [],
+      mensajeInterno: "",
+      mensajeExterno: "",
     },
   });
 
@@ -207,14 +224,20 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
       // Filtrar pagos con monto 0 antes de enviar
       const pagosParaEnviar = (values.pagos ?? []).filter(p => p.monto > 0);
       
-      await createVenta.mutateAsync({
+      // LLAMAR A LA MUTACIÓN Y OBTENER EL ID DE VENTA
+      const ventaId = await createVenta.mutateAsync({
           cliente: values.cliente,
           items: values.items,
-          pagos: pagosParaEnviar
+          pagos: pagosParaEnviar,
+          mensajeInterno: values.mensajeInterno,
+          mensajeExterno: values.mensajeExterno,
       });
       
-      toast({ title: "Venta realizada", description: "La venta se ha registrado correctamente." });
-      onSuccess(); // Cierra el modal
+      // ABRIR EL MODAL DE CONFIRMACIÓN Y PDF
+      setGeneratedVentaId(ventaId); // Guardar el ID de la venta generada
+      setIsPdfModalOpen(true); // Abrir el modal de PDF
+      
+      // El toast de "Venta realizada" se puede mover al modal de PDF o al onPdfGenerated
       
     } catch (error: any) {
       console.error("Error RPC:", error); // Log detallado
@@ -226,344 +249,418 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
     appendItem({ producto_id: "", cantidad: 1, precio_unitario: 0 });
   };
 
+  const handlePdfModalClosed = () => {
+    // Esta función se llama cuando el modal de PDF se cierra (después de generar el PDF)
+    toast({ title: "Proceso de Venta Finalizado", description: "La venta se registró y el PDF se procesó." });
+    onSuccess(); // Llamar al onSuccess original para cerrar el modal de VentaForm
+    form.reset(); // Opcional: resetear el formulario de venta para una nueva venta
+    setGeneratedVentaId(undefined); // Limpiar el ID de venta
+  };
+
   // --- Renderizado --- 
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        
-        {/* Sección Cliente (sin cambios) */}
-        <div>
-          <h3 className="text-lg font-medium mb-4">Datos del Cliente</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <FormField
-              control={form.control}
-              name="cliente.nombre"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Nombre completo *</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Ej: Juan Pérez" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="cliente.dni_cuit"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>DNI/CUIT *</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Ej: 12345678" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="cliente.telefono"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Teléfono</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Ej: 3415123456" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="cliente.email"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Email</FormLabel>
-                  <FormControl>
-                    <Input placeholder="ejemplo@email.com" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="cliente.direccion"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Dirección</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Calle y número" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="cliente.ciudad"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Ciudad</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Ej: Rosario" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="cliente.codigo_postal"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Código Postal</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Ej: 2000" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </div>
-        </div>
-
-        <Separator className="my-4" />
-
-        {/* Sección Productos (sin cambios estructurales, solo usa itemFields) */}
-        <div>
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-medium">Productos</h3>
-            <Button type="button" onClick={agregarProducto} variant="outline" size="sm">Agregar Producto</Button>
-          </div>
-          {isLoadingProductos ? (
-             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          ) : productosDisponibles.length === 0 ? (
-             <p className="text-muted-foreground">No hay productos con stock.</p>
-          ) : (
-            <div className="space-y-4">
-              {itemFields.map((field, index) => (
-                <Card key={field.id} className="relative">
-                  <CardContent className="pt-4">
-                    <div className="grid grid-cols-12 gap-4">
-                      <div className="col-span-12 md:col-span-5">
-                        <FormField
-                          control={form.control}
-                          name={`items.${index}.producto_id`}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Producto *</FormLabel>
-                              <Select
-                                value={field.value}
-                                onValueChange={(value) => {
-                                  field.onChange(value);
-                                  actualizarPrecioPorProducto(index, value);
-                                }}
-                              >
-                                <FormControl>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Seleccionar producto" />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  {productosDisponibles.map((producto) => (
-                                    <SelectItem key={producto.id} value={producto.id}>
-                                      {producto.nombre}{" "}
-                                      <span className="ml-2 text-muted-foreground">
-                                        (Stock: {producto.stock})
-                                      </span>
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </div>
-
-                      <div className="col-span-6 md:col-span-2">
-                        <FormField
-                          control={form.control}
-                          name={`items.${index}.cantidad`}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Cantidad *</FormLabel>
-                              <FormControl>
-                                <Input
-                                  type="number"
-                                  min={1}
-                                  {...field}
-                                  onChange={(e) => handleCantidadChange(index, e.target.value)}
-                                />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </div>
-
-                      <div className="col-span-6 md:col-span-3">
-                        <FormField
-                          control={form.control}
-                          name={`items.${index}.precio_unitario`}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Precio *</FormLabel>
-                              <FormControl>
-                                <Input
-                                  type="number"
-                                  step="0.01"
-                                  min="0"
-                                  {...field}
-                                  onChange={(e) => handlePrecioChange(index, e.target.value)}
-                                />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </div>
-
-                      <div className="col-span-10 md:col-span-2 flex items-end">
-                        <div className="w-full text-right">
-                          <p className="text-sm font-medium">Subtotal:</p>
-                          <p className="text-lg font-semibold">
-                            ${((form.watch(`items.${index}.cantidad`) || 0) * 
-                               (form.watch(`items.${index}.precio_unitario`) || 0)).toFixed(2)}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="absolute right-4 top-4">
-                        {itemFields.length > 1 && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => removeItem(index)}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-          {itemFields.length > 0 && (
-            <div className="flex justify-end mt-4">
-              <div className="text-right">
-                <p className="text-sm font-medium">Total de la venta:</p>
-                <p className="text-2xl font-bold">${totalVentaCalculado.toFixed(2)}</p>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <Separator className="my-4" />
-
-        {/* --- Sección Formas de Pago (NUEVO) --- */}
-        <div>
-          <h3 className="text-lg font-medium mb-4">Formas de Pago</h3>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-4">
-            {METODOS_PAGO.map((metodo) => (
+    <>
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          
+          {/* Sección Cliente (sin cambios) */}
+          <div>
+            <h3 className="text-lg font-medium mb-4">Datos del Cliente</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
-                key={metodo}
                 control={form.control}
-                name={`_control_pago_${metodo}` as any}
-                render={() => (
-                  <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 shadow-sm">
+                name="cliente.nombre"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nombre completo *</FormLabel>
                     <FormControl>
-                       <Checkbox
-                          checked={pagoFields.some((field) => field.metodo_pago === metodo)}
-                          onCheckedChange={(checked) => handleMetodoPagoChange(metodo, checked)}
-                       />
+                      <Input placeholder="Ej: Juan Pérez" {...field} value={field.value || ''} />
                     </FormControl>
-                    <FormLabel className="font-normal">{metodo}</FormLabel>
+                    <FormMessage />
                   </FormItem>
                 )}
               />
-            ))}
+
+              <FormField
+                control={form.control}
+                name="cliente.dni_cuit"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>DNI/CUIT *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Ej: 12345678" {...field} value={field.value || ''} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="cliente.telefono"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Teléfono</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Ej: 3415123456" {...field} value={field.value || ''} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="cliente.email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email</FormLabel>
+                    <FormControl>
+                      <Input placeholder="ejemplo@email.com" {...field} value={field.value || ''} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="cliente.direccion"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Dirección</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Calle y número" {...field} value={field.value || ''} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="cliente.ciudad"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Ciudad</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Ej: Rosario" {...field} value={field.value || ''} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="cliente.codigo_postal"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Código Postal</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Ej: 2000" {...field} value={field.value || ''} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
           </div>
 
-          {/* Campos de Monto para métodos seleccionados */}
-          {pagoFields.length > 0 && (
-            <div className="space-y-4 mt-4 border p-4 rounded-md">
-              <h4 className="font-medium">Ingresar Montos</h4>
-              {pagoFields.map((field, index) => (
+          <Separator className="my-4" />
+
+          {/* Sección Productos (sin cambios estructurales, solo usa itemFields) */}
+          <div>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-medium">Productos</h3>
+              <Button type="button" onClick={agregarProducto} variant="outline" size="sm">Agregar Producto</Button>
+            </div>
+            {isLoadingProductos ? (
+               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            ) : productosDisponibles.length === 0 ? (
+               <p className="text-muted-foreground">No hay productos con stock.</p>
+            ) : (
+              <div className="space-y-4">
+                {itemFields.map((field, index) => (
+                  <Card key={field.id} className="relative">
+                    <CardContent className="pt-4">
+                      <div className="grid grid-cols-12 gap-4">
+                        <div className="col-span-12 md:col-span-5">
+                          <FormField
+                            control={form.control}
+                            name={`items.${index}.producto_id`}
+                            render={({ field: selectField }) => (
+                              <FormItem>
+                                <FormLabel>Producto *</FormLabel>
+                                <Select
+                                  value={selectField.value || ""}
+                                  onValueChange={(value) => {
+                                    selectField.onChange(value);
+                                    actualizarPrecioPorProducto(index, value);
+                                  }}
+                                >
+                                  <FormControl>
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Seleccionar producto" />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    {productosDisponibles.map((producto) => (
+                                      <SelectItem key={producto.id} value={producto.id}>
+                                        {producto.nombre}{" "}
+                                        <span className="ml-2 text-muted-foreground">
+                                          (Stock: {producto.stock})
+                                        </span>
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+
+                        <div className="col-span-6 md:col-span-2">
+                          <FormField
+                            control={form.control}
+                            name={`items.${index}.cantidad`}
+                            render={({ field: cantidadField }) => (
+                              <FormItem>
+                                <FormLabel>Cantidad *</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type="number"
+                                    min={1}
+                                    {...cantidadField}
+                                    value={cantidadField.value || 0}
+                                    onChange={(e) => handleCantidadChange(index, e.target.value)}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+
+                        <div className="col-span-6 md:col-span-3">
+                          <FormField
+                            control={form.control}
+                            name={`items.${index}.precio_unitario`}
+                            render={({ field: precioField }) => (
+                              <FormItem>
+                                <FormLabel>Precio *</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    {...precioField}
+                                    value={precioField.value || 0}
+                                    onChange={(e) => handlePrecioChange(index, e.target.value)}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+
+                        <div className="col-span-10 md:col-span-2 flex items-end">
+                          <div className="w-full text-right">
+                            <p className="text-sm font-medium">Subtotal:</p>
+                            <p className="text-lg font-semibold">
+                              ${((form.watch(`items.${index}.cantidad`) || 0) * 
+                                 (form.watch(`items.${index}.precio_unitario`) || 0)).toFixed(2)}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="absolute right-4 top-4">
+                          {itemFields.length > 1 && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => removeItem(index)}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+            {itemFields.length > 0 && (
+              <div className="flex justify-end mt-4">
+                <div className="text-right">
+                  <p className="text-sm font-medium">Total de la venta:</p>
+                  <p className="text-2xl font-bold">${totalVentaCalculado.toFixed(2)}</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <Separator className="my-4" />
+
+          {/* NUEVO CAMPO: Mensaje Interno / Observaciones */}
+          <div>
+            <FormField
+              control={form.control}
+              name="mensajeInterno"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Mensaje Interno / Observaciones (opcional)</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="Anotaciones para esta venta, detalles de entrega, etc."
+                      className="resize-none"
+                      {...field}
+                      value={field.value || ''} // Para asegurar que sea controlado
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    Este mensaje es para uso interno y no aparecerá en el comprobante del cliente por defecto.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+
+          {/* MENSAJE EXTERNO (PARA EL CLIENTE) */}
+          <FormField
+            control={form.control}
+            name="mensajeExterno"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Mensaje para el Cliente (visible en PDF)</FormLabel>
+                <FormControl>
+                  <Textarea
+                    placeholder="Ej: Gracias por su compra. Por favor, revisar los productos al recibir."
+                    className="resize-none"
+                    {...field}
+                  />
+                </FormControl>
+                <FormDescription>
+                  Este mensaje aparecerá en el comprobante PDF del cliente.
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          {/* FIN MENSAJE EXTERNO */}
+
+          <Separator className="my-6" />
+
+          {/* --- Sección Formas de Pago (NUEVO) --- */}
+          <div>
+            <h3 className="text-lg font-medium mb-4">Formas de Pago</h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-4">
+              {METODOS_PAGO.map((metodo) => (
                 <FormField
-                  key={field.id}
+                  key={metodo}
                   control={form.control}
-                  name={`pagos.${index}.monto`}
-                  render={({ field: montoField }) => (
-                    <FormItem className="flex items-center gap-4">
-                      <FormLabel className="w-32 shrink-0">{field.metodo_pago}:</FormLabel>
+                  name={`_control_pago_${metodo}` as any}
+                  render={() => (
+                    <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 shadow-sm">
                       <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          placeholder="0.00"
-                          {...montoField}
-                          onChange={(e) => handlePagoMontoChange(index, e.target.value)}
-                        />
+                         <Checkbox
+                            checked={pagoFields.some((field) => field.metodo_pago === metodo)}
+                            onCheckedChange={(checked) => handleMetodoPagoChange(metodo, checked)}
+                         />
                       </FormControl>
-                      <FormMessage />
+                      <FormLabel className="font-normal">{metodo}</FormLabel>
                     </FormItem>
                   )}
                 />
               ))}
             </div>
-          )}
 
-          {/* Resumen de Pagos y Total */}
-          <div className="mt-6 flex justify-end items-center gap-6 border-t pt-4">
-             {/* Mostrar error de validación general de pagos si existe */}
-             {form.formState.errors.pagos?.message && (
-               <div className="text-sm text-destructive flex items-center gap-1 mr-auto">
-                  <AlertCircle className="h-4 w-4"/>
-                  {form.formState.errors.pagos.message}
+            {/* Campos de Monto para métodos seleccionados */}
+            {pagoFields.length > 0 && (
+              <div className="space-y-4 mt-4 border p-4 rounded-md">
+                <h4 className="font-medium">Ingresar Montos</h4>
+                {pagoFields.map((field, index) => (
+                  <FormField
+                    key={field.id}
+                    control={form.control}
+                    name={`pagos.${index}.monto`}
+                    render={({ field: montoField }) => (
+                      <FormItem className="flex items-center gap-4">
+                        <FormLabel className="w-32 shrink-0">{field.metodo_pago}:</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="0.00"
+                            {...montoField}
+                            value={montoField.value || 0}
+                            onChange={(e) => handlePagoMontoChange(index, e.target.value)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Resumen de Pagos y Total */}
+            <div className="mt-6 flex justify-end items-center gap-6 border-t pt-4">
+               {/* Mostrar error de validación general de pagos si existe */}
+               {form.formState.errors.pagos?.message && (
+                 <div className="text-sm text-destructive flex items-center gap-1 mr-auto">
+                    <AlertCircle className="h-4 w-4"/>
+                    {form.formState.errors.pagos.message}
+                 </div>
+               )}
+              
+               <div className="text-right">
+                  <p className="text-sm font-medium">Total Pagado:</p>
+                  <p className={`text-lg font-semibold ${montoRestante !== 0 ? 'text-orange-600' : 'text-green-600'}`}>
+                    ${totalPagadoCalculado.toFixed(2)}
+                  </p>
                </div>
-             )}
-            
-             <div className="text-right">
-                <p className="text-sm font-medium">Total Pagado:</p>
-                <p className={`text-lg font-semibold ${montoRestante !== 0 ? 'text-orange-600' : 'text-green-600'}`}>
-                  ${totalPagadoCalculado.toFixed(2)}
-                </p>
-             </div>
-             <div className="text-right">
-                <p className="text-sm font-medium">Total Venta:</p>
-                <p className="text-lg font-semibold">${totalVentaCalculado.toFixed(2)}</p>
-             </div>
-             <div className="text-right">
-                <p className="text-sm font-medium">Restante:</p>
-                <p className={`text-lg font-bold ${montoRestante !== 0 ? 'text-red-600' : 'text-green-600'}`}>
-                   ${montoRestante.toFixed(2)}
-                </p>
-             </div>
+               <div className="text-right">
+                  <p className="text-sm font-medium">Total Venta:</p>
+                  <p className="text-lg font-semibold">${totalVentaCalculado.toFixed(2)}</p>
+               </div>
+               <div className="text-right">
+                  <p className="text-sm font-medium">Restante:</p>
+                  <p className={`text-lg font-bold ${montoRestante !== 0 ? 'text-red-600' : 'text-green-600'}`}>
+                     ${montoRestante.toFixed(2)}
+                  </p>
+               </div>
+            </div>
           </div>
-        </div>
-        
-        {/* Botones de Acción (sin cambios estructurales) */}
-        <div className="flex justify-end space-x-2 pt-4">
-          <Button type="button" variant="outline" onClick={onSuccess}>Cancelar</Button>
-          <Button type="submit" disabled={createVenta.isPending || isLoadingProductos || Math.abs(montoRestante) >= 0.01 }>
-            {createVenta.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            {createVenta.isPending ? "Procesando..." : "Finalizar Venta"}
-          </Button>
-        </div>
-      </form>
-    </Form>
+          
+          {/* Botones de Acción (sin cambios estructurales) */}
+          <div className="flex justify-end space-x-2 pt-4">
+            <Button type="button" variant="outline" onClick={onSuccess}>Cancelar</Button>
+            <Button 
+              type="submit" 
+              disabled={createVenta.isPending || isLoadingProductos || Math.abs(montoRestante) >= 0.01 || form.formState.isSubmitting}
+            >
+              { (createVenta.isPending || form.formState.isSubmitting) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              { (createVenta.isPending || form.formState.isSubmitting) ? "Procesando..." : "Finalizar Venta"}
+            </Button>
+          </div>
+        </form>
+      </Form>
+
+      {/* RENDERIZAR EL MODAL DE CONFIRMACIÓN Y PDF */}
+      <ConfirmationPdfModal 
+          open={isPdfModalOpen} 
+          onOpenChange={setIsPdfModalOpen} 
+          idVenta={generatedVentaId} 
+          onPdfGenerated={handlePdfModalClosed} 
+      />
+    </>
   );
 } 

@@ -53,13 +53,24 @@ export function useCreateVenta() {
       // Asegurarse de que solo se envían pagos con monto > 0
       const pagosValidos = params.pagos.filter(p => p.monto > 0);
 
+      const rpcParams: any = {
+        _cliente_data: params.cliente,
+        _items: itemsWithSubtotal,
+        _pagos: pagosValidos,
+      };
+
+      if (params.mensajeInterno !== undefined) {
+        rpcParams._mensaje_interno = params.mensajeInterno;
+      }
+      
+      // Añadir el mensaje externo a los parámetros RPC
+      if (params.mensajeExterno !== undefined) {
+        rpcParams._mensaje_externo = params.mensajeExterno;
+      }
+
       // Llamar a la función RPC para realizar la venta atomicamente
       const { data, error } = await supabase
-        .rpc('realizar_venta', {
-          _cliente_data: params.cliente,
-          _items: itemsWithSubtotal,
-          _pagos: pagosValidos // Pasar los pagos válidos
-        });
+        .rpc('realizar_venta', rpcParams);
 
       if (error) throw error;
       return data as string; // ID de la venta
@@ -154,6 +165,9 @@ export function useVentaDetalle(ventaId: string | null) {
 
       if (itemsError) throw itemsError;
 
+      // Log para depuración
+      console.log('Venta Data Raw:', JSON.stringify(ventaData, null, 2));
+
       // Combinar los datos
       return {
         id: ventaData.id,
@@ -161,6 +175,8 @@ export function useVentaDetalle(ventaId: string | null) {
         fecha: ventaData.fecha,
         total: ventaData.total,
         created_at: ventaData.created_at,
+        mensajeInterno: ventaData.mensaje_interno,
+        mensajeExterno: ventaData.mensaje_externo,
         cliente: ventaData.clientes as any as Cliente,
         pagos: (ventaData.ventas_pagos as unknown as VentaPago[] | undefined) ?? [],
         items: (items || []).map((item: any) => ({

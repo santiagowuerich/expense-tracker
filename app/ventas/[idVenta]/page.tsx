@@ -116,6 +116,30 @@ export default function VentaDetallePage() {
         </CardContent>
       </Card>
 
+      {/* Mensaje Interno (si existe) */}
+      {venta.mensajeInterno && (
+        <Card className="mb-8 rounded-lg shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-xl">Mensaje Interno</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm whitespace-pre-wrap">{venta.mensajeInterno}</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Mensaje Externo (si existe) */}
+      {venta.mensajeExterno && (
+        <Card className="mb-8 rounded-lg shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-xl">Mensaje para el Cliente</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm whitespace-pre-wrap">{venta.mensajeExterno}</p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Productos Vendidos */}
       <Card className="rounded-lg shadow-sm">
         <CardHeader>

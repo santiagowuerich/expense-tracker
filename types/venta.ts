@@ -35,6 +35,8 @@ export interface CrearVentaParams {
   cliente: Cliente;
   items: VentaItem[];
   pagos: VentaPago[];
+  mensajeInterno?: string;
+  mensajeExterno?: string;
 }
 
 export interface Venta {
@@ -46,4 +48,6 @@ export interface Venta {
   cliente?: Cliente;
   items?: (VentaItem & { producto_nombre?: string })[]; // Mantenemos el tipo detallado para items
   pagos?: VentaPago[]; // Añadido para los pagos
+  mensajeInterno?: string;
+  mensajeExterno?: string | null;
 } 

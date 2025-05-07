@@ -1,12 +1,18 @@
+"use client";
+
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { PlusCircle, BarChart3, CreditCard, Package, FileBarChart, History } from "lucide-react"
+import { PlusCircle, BarChart3, CreditCard, Package, FileBarChart, History, UserCircle } from "lucide-react"
 import Link from "next/link"
 import CompraConTarjetaDialog from "@/components/compra-con-tarjeta-dialog"
 import AddCardDialog from "@/components/add-card-dialog"
+import BusinessProfileModal from "@/components/business-profile-modal"
 
 export default function Home() {
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
+
   return (
-    <div className="container flex flex-col items-center justify-center min-h-screen py-12 px-4">
+    <div className="container flex flex-col items-center justify-center min-h-screen py-12 px-4 relative">
       <div className="max-w-md w-full space-y-8">
         <div className="text-center">
           <h1 className="text-3xl font-bold tracking-tight">Control de Gastos</h1>
@@ -57,6 +63,23 @@ export default function Home() {
           </Link>
         </div>
       </div>
+
+      <div className="fixed bottom-6 right-6">
+        <Button
+          variant="outline"
+          size="lg"
+          className="rounded-full h-16 w-16 p-0 flex items-center justify-center shadow-lg"
+          onClick={() => setIsProfileModalOpen(true)}
+          aria-label="Mi Perfil"
+        >
+          <UserCircle className="h-8 w-8" />
+        </Button>
+      </div>
+
+      <BusinessProfileModal
+        open={isProfileModalOpen}
+        onOpenChange={setIsProfileModalOpen}
+      />
     </div>
   )
 }
