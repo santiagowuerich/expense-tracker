@@ -8,9 +8,10 @@ import { useVentaDetalle } from "@/hooks/useVentas";
 import type { PerfilEmpresa } from "@/lib/types/venta.types";
 import type { Venta } from "@/types/venta";
 import { toast } from 'sonner';
-import { Loader2, DownloadCloud, Share2, AlertTriangle } from 'lucide-react';
+import { Loader2, DownloadCloud, Share2, AlertTriangle, X } from 'lucide-react';
 import { BsWhatsapp } from 'react-icons/bs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { useRouter } from 'next/navigation';
 
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -28,6 +29,7 @@ export default function ConfirmationPdfModal({
   idVenta,
   onPdfGeneratedProp,
 }: ConfirmationPdfModalProps) {
+  const router = useRouter();
   const [isGenerating, setIsGenerating] = useState(false);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -191,10 +193,6 @@ export default function ConfirmationPdfModal({
       document.body.removeChild(link);
 
       toast.success("PDF generado y descarga iniciada.");
-      
-      if (onPdfGeneratedProp) {
-        onPdfGeneratedProp();
-      }
 
     } catch (error) {
       console.error("Error generando PDF:", error);
@@ -341,6 +339,21 @@ export default function ConfirmationPdfModal({
     }
   };
 
+  const handleCloseModal = () => {
+    onOpenChange(false);
+  };
+
+  const handleNavigateToInventario = () => {
+    onOpenChange(false);
+    
+    // Llamar a onPdfGeneratedProp antes de redirigir
+    if (onPdfGeneratedProp) {
+      onPdfGeneratedProp();
+    }
+    
+    router.push('/inventario');
+  };
+
   const internalOnOpenChange = useCallback((isOpen: boolean) => {
     if (isGenerating) { 
       return;
@@ -353,8 +366,12 @@ export default function ConfirmationPdfModal({
       setPdfBlob(null);
       setPdfUrl(null);
       setPdfGenerated(false);
+
+      if (onPdfGeneratedProp) {
+        onPdfGeneratedProp();
+      }
     }
-  }, [isGenerating, onOpenChange, pdfUrl]);
+  }, [isGenerating, onOpenChange, pdfUrl, onPdfGeneratedProp]);
 
   const uiSubtotal = useMemo(() => {
     if (!ventaDetalle || !ventaDetalle.items) return 0;
@@ -369,178 +386,200 @@ export default function ConfirmationPdfModal({
 
   return (
     <Dialog open={open} onOpenChange={internalOnOpenChange}>
-      <DialogContent className="bg-card w-full max-w-sm p-4 sm:p-6 sm:max-w-lg md:max-w-2xl rounded-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader className="text-center mb-4">
-          <DialogTitle className="text-2xl font-semibold">Resumen de la Venta</DialogTitle>
-          {ventaDetalle && <DialogDescription>ID Venta: {ventaDetalle.id}</DialogDescription>}
+      <DialogContent className="bg-card w-[90%] max-w-[90%] sm:max-w-md md:max-w-lg h-auto max-h-[90vh] rounded-lg p-0 overflow-hidden flex flex-col">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="absolute top-3 right-3 text-red-500 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900/50 z-20"
+          onClick={handleCloseModal}
+          aria-label="Cerrar modal"
+        >
+          <X className="h-5 w-5" />
+        </Button>
+
+        <DialogHeader className="p-4 pb-2 text-center bg-card border-b sticky top-0 z-10">
+          <DialogTitle className="text-xl font-semibold pr-8">Resumen de la Venta</DialogTitle>
+          {ventaDetalle && <DialogDescription className="text-sm">ID Venta: {ventaDetalle.id}</DialogDescription>}
         </DialogHeader>
 
         {isLoading && (
-          <div className="flex flex-col items-center justify-center h-64">
-            <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+          <div className="flex flex-col items-center justify-center p-8">
+            <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
             <p className="text-muted-foreground">Cargando resumen...</p>
           </div>
         )}
 
-        {errorPerfil && <p className="text-red-500 text-center">Error al cargar datos de la empresa: {errorPerfil.message}</p>}
-        {errorVenta && <p className="text-red-500 text-center">Error al cargar detalles de la venta: {errorVenta.message}</p>}
+        {errorPerfil && <p className="text-red-500 text-center p-4">Error al cargar datos de la empresa: {errorPerfil.message}</p>}
+        {errorVenta && <p className="text-red-500 text-center p-4">Error al cargar detalles de la venta: {errorVenta.message}</p>}
 
-        {!isLoading && !errorPerfil && !errorVenta && perfilEmpresa && ventaDetalle && (
-          <div className="space-y-6 text-sm">
-            <section>
-              <h3 className="font-semibold text-lg mb-2 text-primary">Datos de la Empresa</h3>
-              <p>{perfilEmpresa.businessName}</p>
-              <p>CUIT: {perfilEmpresa.cuit}</p>
-              <p>Dirección: {perfilEmpresa.address}</p>
-              <p>Condición IVA: {perfilEmpresa.ivaCondition}</p>
-            </section>
+        <div className="overflow-y-auto flex-1 p-4 pt-2">
+          {!isLoading && !errorPerfil && !errorVenta && perfilEmpresa && ventaDetalle && (
+            <div className="space-y-4 text-sm">
+              <section>
+                <h3 className="font-semibold text-base mb-1 text-primary">Datos de la Empresa</h3>
+                <p>{perfilEmpresa.businessName}</p>
+                <p>CUIT: {perfilEmpresa.cuit}</p>
+                <p>Dirección: {perfilEmpresa.address}</p>
+                <p>Condición IVA: {perfilEmpresa.ivaCondition}</p>
+              </section>
 
-            <section>
-              <h3 className="font-semibold text-lg mb-2 text-primary">Datos del Cliente</h3>
-              {ventaDetalle.cliente ? (
-                <>
-                  <p>{ventaDetalle.cliente.nombre}</p>
-                  <p>DNI/CUIT: {ventaDetalle.cliente.dni_cuit}</p>
-                  {ventaDetalle.cliente.direccion && <p>Dirección: {ventaDetalle.cliente.direccion}</p>}
-                  {ventaDetalle.cliente.email && <p>Email: {ventaDetalle.cliente.email}</p>}
-                  {ventaDetalle.cliente.telefono && <p>Teléfono: {ventaDetalle.cliente.telefono}</p>}
-                </>
-              ) : <p>Cliente no especificado.</p>}
-            </section>
+              <section>
+                <h3 className="font-semibold text-base mb-1 text-primary">Datos del Cliente</h3>
+                {ventaDetalle.cliente ? (
+                  <>
+                    <p>{ventaDetalle.cliente.nombre}</p>
+                    <p>DNI/CUIT: {ventaDetalle.cliente.dni_cuit}</p>
+                    {ventaDetalle.cliente.direccion && <p>Dirección: {ventaDetalle.cliente.direccion}</p>}
+                    {ventaDetalle.cliente.email && <p>Email: {ventaDetalle.cliente.email}</p>}
+                    {ventaDetalle.cliente.telefono && <p>Teléfono: {ventaDetalle.cliente.telefono}</p>}
+                  </>
+                ) : <p>Cliente no especificado.</p>}
+              </section>
 
-            {(() => {
-              const mensajeExterno = ventaDetalle.mensajeExterno || (ventaDetalle as any).mensaje_externo;
-              return mensajeExterno && mensajeExterno.trim() !== "" ? (
-                <section>
-                  <h3 className="font-semibold text-lg mb-2 text-primary">Mensaje Adicional</h3>
-                  <p className="whitespace-pre-wrap italic">{mensajeExterno}</p>
-                </section>
-              ) : null;
-            })()}
+              {(() => {
+                const mensajeExterno = ventaDetalle.mensajeExterno || (ventaDetalle as any).mensaje_externo;
+                return mensajeExterno && mensajeExterno.trim() !== "" ? (
+                  <section>
+                    <h3 className="font-semibold text-base mb-1 text-primary">Mensaje Adicional</h3>
+                    <p className="whitespace-pre-wrap italic break-words">{mensajeExterno}</p>
+                  </section>
+                ) : null;
+              })()}
 
-            <section>
-              <h3 className="font-semibold text-lg mb-2 text-primary">Productos Vendidos</h3>
-              <div className="overflow-x-auto rounded-md border">
-                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                  <thead className="bg-gray-50 dark:bg-gray-700">
-                    <tr>
-                      <th scope="col" className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Descripción</th>
-                      <th scope="col" className="px-4 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Cant.</th>
-                      <th scope="col" className="px-4 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">P. Unit.</th>
-                      <th scope="col" className="px-4 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Subtotal</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                    {(ventaDetalle.items || []).map((item, index) => (
-                      <tr key={item.producto_id + "-" + index}>
-                        <td className="px-4 py-2 whitespace-nowrap">{item.producto_nombre || 'N/A'}</td>
-                        <td className="px-4 py-2 whitespace-nowrap text-right">{item.cantidad}</td>
-                        <td className="px-4 py-2 whitespace-nowrap text-right">{formatCurrency(item.precio_unitario)}</td>
-                        <td className="px-4 py-2 whitespace-nowrap text-right">{formatCurrency(item.subtotal)}</td>
+              <section>
+                <h3 className="font-semibold text-base mb-1 text-primary">Productos Vendidos</h3>
+                <div className="overflow-x-auto rounded-md border">
+                  <table className="w-full divide-y divide-gray-200 dark:divide-gray-700">
+                    <thead className="bg-gray-50 dark:bg-gray-700">
+                      <tr>
+                        <th scope="col" className="px-2 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Descripción</th>
+                        <th scope="col" className="px-2 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Cant.</th>
+                        <th scope="col" className="px-2 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">P. Unit.</th>
+                        <th scope="col" className="px-2 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Subtotal</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
+                    </thead>
+                    <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                      {(ventaDetalle.items || []).map((item, index) => (
+                        <tr key={item.producto_id + "-" + index}>
+                          <td className="px-2 py-2 text-xs truncate max-w-[100px] sm:max-w-[120px]">{item.producto_nombre || 'N/A'}</td>
+                          <td className="px-2 py-2 text-xs text-right">{item.cantidad}</td>
+                          <td className="px-2 py-2 text-xs text-right">{formatCurrency(item.precio_unitario)}</td>
+                          <td className="px-2 py-2 text-xs text-right">{formatCurrency(item.subtotal)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
 
-            <section className="text-right space-y-1 pt-4 border-t border-gray-200 dark:border-gray-700">
-              <p><span className="font-semibold">Subtotal Venta:</span> {formatCurrency(uiSubtotal)}</p>
-              {uiImpuestos !== 0 && (
-                <p><span className="font-semibold">Impuestos:</span> {formatCurrency(uiImpuestos)}</p>
-              )}
-              <p className="text-lg font-bold text-primary"><span className="font-semibold">Total Venta:</span> {formatCurrency(ventaDetalle.total)}</p>
-            </section>
+              <section className="text-right space-y-1 pt-2 border-t border-gray-200 dark:border-gray-700">
+                <p><span className="font-semibold">Subtotal:</span> {formatCurrency(uiSubtotal)}</p>
+                {uiImpuestos !== 0 && (
+                  <p><span className="font-semibold">Impuestos:</span> {formatCurrency(uiImpuestos)}</p>
+                )}
+                <p className="text-base font-bold text-primary"><span className="font-semibold">Total:</span> {formatCurrency(ventaDetalle.total)}</p>
+              </section>
+            </div>
+          )}
+          
+          {!isLoading && (!perfilEmpresa || !ventaDetalle) && !errorPerfil && !errorVenta && (
+            <div className="text-center py-8">
+              <p className="text-muted-foreground">No se pudieron cargar todos los datos para el resumen.</p>
+              <p className="text-xs text-muted-foreground mt-1">Asegúrate de que el ID de venta sea válido y el perfil de empresa esté configurado.</p>
+            </div>
+          )}
 
-            <DialogFooter className="mt-8">
-              <div className="flex flex-col space-y-2 w-full">
-                {!pdfGenerated ? (
+          <div className="h-4 md:h-0"></div>
+        </div>
+
+        <div className="bg-card border-t p-4 w-full">
+          <div className="flex flex-col space-y-2 w-full">
+            {!pdfGenerated ? (
+              <Button 
+                type="button" 
+                onClick={handleGeneratePdf} 
+                disabled={isGenerating || isLoading}
+                className="bg-primary text-primary-foreground hover:bg-primary/90 w-full py-2 rounded-md text-sm"
+              >
+                {isGenerating ? 
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generando...</> : 
+                  <><DownloadCloud className="mr-2 h-4 w-4" /> Generar y Descargar PDF</>
+                }
+              </Button>
+            ) : (
+              <>
+                <Button 
+                  type="button" 
+                  onClick={() => {
+                    if (pdfUrl && ventaDetalle) {
+                      const link = document.createElement('a');
+                      link.href = pdfUrl;
+                      link.download = `Recibo_Venta_${ventaDetalle.id}.pdf`;
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                    } else {
+                      toast.error("No hay PDF para descargar. Intenta generarlo de nuevo.");
+                    }
+                  }} 
+                  className="bg-primary text-primary-foreground hover:bg-primary/90 w-full py-2 rounded-md text-sm"
+                >
+                  <DownloadCloud className="mr-2 h-4 w-4" /> Descargar PDF de Nuevo
+                </Button>
+                <div className="flex space-x-2 w-full">
                   <Button 
                     type="button" 
-                    onClick={handleGeneratePdf} 
-                    disabled={isGenerating || isLoading}
-                    className="bg-primary text-primary-foreground hover:bg-primary/90 w-full py-3 rounded-md text-base"
+                    onClick={handleSharePdf} 
+                    variant="outline"
+                    className="w-1/2 py-2 rounded-md mt-2 text-sm"
+                    disabled={!pdfBlob} 
                   >
-                    {isGenerating ? 
-                      <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Generando...</> : 
-                      <><DownloadCloud className="mr-2 h-5 w-5" /> Generar y Descargar PDF</>
-                    }
+                    <Share2 className="mr-2 h-4 w-4 flex-shrink-0" /> Compartir PDF
                   </Button>
-                ) : (
-                  <>
-                    <Button 
-                      type="button" 
-                      onClick={() => {
-                        if (pdfUrl) {
-                          const link = document.createElement('a');
-                          link.href = pdfUrl;
-                          link.download = `Recibo_Venta_${ventaDetalle.id}.pdf`;
-                          document.body.appendChild(link);
-                          link.click();
-                          document.body.removeChild(link);
-                        } else {
-                          toast.error("No hay PDF para descargar. Intenta generarlo de nuevo.");
-                        }
-                      }} 
-                      className="bg-primary text-primary-foreground hover:bg-primary/90 w-full py-3 rounded-md text-base"
-                    >
-                      <DownloadCloud className="mr-2 h-5 w-5" /> Descargar PDF de Nuevo
-                    </Button>
-                    <div className="flex space-x-2 w-full">
-                      <Button 
-                        type="button" 
-                        onClick={handleSharePdf} 
-                        variant="outline"
-                        className="w-1/2 py-3 rounded-md mt-2 text-base"
-                        disabled={!pdfBlob} 
-                      >
-                        <Share2 className="mr-2 h-5 w-5" /> Compartir PDF
-                      </Button>
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button 
-                              type="button" 
-                              onClick={handleShareWhatsApp} 
-                              variant="outline"
-                              className="w-1/2 py-3 rounded-md mt-2 text-base flex items-center justify-center gap-2 border border-green-500 text-green-500 hover:bg-green-600 hover:text-white"
-                              disabled={!ventaDetalle?.cliente?.telefono || !pdfBlob} 
-                              aria-label="Compartir recibo por WhatsApp"
-                            >
-                              <BsWhatsapp className="h-5 w-5" /> Enviar por WhatsApp
-                            </Button>
-                          </TooltipTrigger>
-                          {!ventaDetalle?.cliente?.telefono && (
-                            <TooltipContent>
-                              <p>Número de cliente no disponible</p>
-                            </TooltipContent>
-                          )}
-                          {!pdfBlob && ventaDetalle?.cliente?.telefono && (
-                            <TooltipContent>
-                              <p>Primero debes generar el PDF</p>
-                            </TooltipContent>
-                          )}
-                        </Tooltip>
-                      </TooltipProvider>
-                    </div>
-                    {pdfGenerated && (
-                      <p className="text-xs text-muted-foreground mt-3 text-center">
-                        <span className="font-medium">Nota:</span> Al usar WhatsApp, el PDF se descargará primero y luego deberás adjuntarlo manualmente al chat. Esto es debido a limitaciones técnicas de WhatsApp.
-                      </p>
-                    )}
-                  </>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button 
+                          type="button" 
+                          onClick={handleShareWhatsApp} 
+                          variant="outline"
+                          className="w-1/2 py-2 rounded-md mt-2 text-sm flex items-center justify-center border border-green-500 text-green-500 hover:bg-green-600 hover:text-white"
+                          disabled={!ventaDetalle?.cliente?.telefono || !pdfBlob} 
+                          aria-label="Compartir recibo por WhatsApp"
+                        >
+                          Enviar por WhatsApp
+                        </Button>
+                      </TooltipTrigger>
+                      {!ventaDetalle?.cliente?.telefono && (
+                        <TooltipContent>
+                          <p>Número de cliente no disponible</p>
+                        </TooltipContent>
+                      )}
+                      {!pdfBlob && ventaDetalle?.cliente?.telefono && (
+                        <TooltipContent>
+                          <p>Primero debes generar el PDF</p>
+                        </TooltipContent>
+                      )}
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
+                {pdfGenerated && (
+                  <p className="text-xs text-muted-foreground mt-2 text-center">
+                    <span className="font-medium">Nota:</span> Al usar WhatsApp, el PDF se descargará primero y luego deberás adjuntarlo manualmente al chat.
+                  </p>
                 )}
-              </div>
-            </DialogFooter>
+                <Button 
+                  type="button" 
+                  onClick={handleNavigateToInventario}
+                  variant="default"
+                  className="w-full py-2 rounded-md mt-3 text-sm bg-green-600 hover:bg-green-700 text-white"
+                >
+                  Venta Finalizada (Ir a Inventario)
+                </Button>
+              </>
+            )}
           </div>
-        )}
-        
-        {!isLoading && (!perfilEmpresa || !ventaDetalle) && !errorPerfil && !errorVenta && (
-            <div className="text-center py-10">
-                <p className="text-muted-foreground">No se pudieron cargar todos los datos para el resumen.</p>
-                <p className="text-xs text-muted-foreground mt-1">Asegúrate de que el ID de venta sea válido y el perfil de empresa esté configurado.</p>
-            </div>
-        )}
+        </div>
       </DialogContent>
     </Dialog>
   );

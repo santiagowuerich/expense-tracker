@@ -7,19 +7,34 @@ import { VentaForm } from "./VentaForm";
 
 export function RealizarVentaButton() {
   const [open, setOpen] = useState(false);
+  const [ventaFormKey, setVentaFormKey] = useState(Date.now());
+
+  const handleFormSuccess = () => {
+    setOpen(false);
+    setVentaFormKey(Date.now());
+  };
+
+  const handleOpenChange = (isOpen: boolean) => {
+    setOpen(isOpen);
+    if (!isOpen) {
+      setVentaFormKey(Date.now());
+    }
+  };
 
   return (
     <>
-      <Button onClick={() => setOpen(true)}>
+      <Button onClick={() => {
+        setOpen(true);
+      }}>
         Realizar Venta
       </Button>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Nueva Venta</DialogTitle>
           </DialogHeader>
-          <VentaForm onSuccess={() => setOpen(false)} />
+          <VentaForm key={ventaFormKey} onSuccess={handleFormSuccess} />
         </DialogContent>
       </Dialog>
     </>

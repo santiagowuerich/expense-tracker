@@ -143,16 +143,65 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
     }
   }, [productos]);
 
-  // --- Manejo de Selección de Pagos --- 
-  const handleMetodoPagoChange = (metodo: string, checked: boolean | string) => {
-    const index = pagoFields.findIndex((field) => field.metodo_pago === metodo);
+  // Estado para rastrear si un monto fue modificado manualmente por el usuario
+  // Las claves serán los labels de METODOS_PAGO (ej. "Efectivo", "Tarjeta Débito")
+  const [manualOverride, setManualOverride] = useState<Record<string, boolean>>(
+    METODOS_PAGO.reduce((acc, methodLabel) => {
+      acc[methodLabel] = false;
+      return acc;
+    }, {} as Record<string, boolean>)
+  );
 
-    if (checked && index === -1) {
+  // Efecto para recalcular montos automáticamente
+  useEffect(() => {
+    const activePagos = (form.getValues("pagos") || []).filter(p => p !== undefined && p !== null);
+    const currentTotalVenta = currentItems.reduce((sum, item) => sum + (Number(item.cantidad) || 0) * (Number(item.precio_unitario) || 0), 0);
+
+
+    if (activePagos.length === 1) {
+      const pagoActual = activePagos[0];
+      const metodo = pagoActual.metodo_pago;
+      const indexToUpdate = (form.getValues("pagos") || []).findIndex(p => p?.metodo_pago === metodo);
+
+      if (indexToUpdate !== -1 && !manualOverride[metodo]) {
+        if (form.getValues(`pagos.${indexToUpdate}.monto`) !== currentTotalVenta) {
+          form.setValue(`pagos.${indexToUpdate}.monto`, currentTotalVenta, { shouldValidate: true, shouldDirty: true });
+        }
+      }
+    } else if (activePagos.length === 2) {
+      const amountPerMethod = currentTotalVenta / 2;
+      activePagos.forEach((pagoActual) => {
+        const metodo = pagoActual.metodo_pago;
+        const indexToUpdate = (form.getValues("pagos") || []).findIndex(p => p?.metodo_pago === metodo);
+
+        if (indexToUpdate !== -1 && !manualOverride[metodo]) {
+          if (form.getValues(`pagos.${indexToUpdate}.monto`) !== amountPerMethod) {
+            form.setValue(`pagos.${indexToUpdate}.monto`, amountPerMethod, { shouldValidate: true, shouldDirty: true });
+          }
+        }
+      });
+    }
+    // Si hay 0, 3 o más métodos seleccionados, no se auto-asigna ningún monto.
+    // Los montos se ingresan manualmente o permanecen en 0 si es un nuevo método.
+    // Al deseleccionar, el monto se pone a 0 (o el item se remueve) y el override se resetea.
+  }, [form.watch("pagos"), totalVentaCalculado, manualOverride, form, currentItems]);
+
+  // --- Manejo de Selección de Pagos MODIFICADO ---
+  const handleMetodoPagoChange = (metodo: string, checked: boolean | string) => {
+    // Asegurarse que 'checked' es un booleano
+    const isChecked = typeof checked === 'boolean' ? checked : checked === 'true';
+    const currentPagosArray = form.getValues("pagos") || [];
+    const index = currentPagosArray.findIndex((field: any) => field.metodo_pago === metodo);
+
+    if (isChecked && index === -1) {
       // Agregar método si no existe
-      appendPago({ metodo_pago: metodo, monto: 0 });
-    } else if (!checked && index !== -1) {
+      appendPago({ metodo_pago: metodo, monto: 0 }); 
+      // El useEffect se encargará de la auto-asignación si aplica
+    } else if (!isChecked && index !== -1) {
       // Remover método si existe
       removePago(index);
+      // Resetear el override manual para este método
+      setManualOverride(prev => ({ ...prev, [metodo]: false }));
     }
   };
 
@@ -189,15 +238,31 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
       form.setValue(`items.${index}.precio_unitario`, precio, { shouldValidate: true });
   };
 
-  const handlePagoMontoChange = (index: number, valueString: string) => {
-      const monto = parseFloat(valueString) || 0; // Convertir a número float
-      form.setValue(`pagos.${index}.monto`, monto, { shouldValidate: true, shouldDirty: true });
-  };
-
   // Mover esta función aquí para que esté disponible en onSubmit
   const verificarStockDisponible = (productoId: string, cantidad: number): boolean => {
     const producto = productosDisponibles.find((p) => p.id === productoId);
     return producto ? producto.stock >= cantidad : false;
+  };
+
+  // --- Manejo de Cambio de Monto en Pagos MODIFICADO ---
+  const handlePagoMontoChange = (index: number, valueString: string) => {
+    const monto = parseFloat(valueString); // No default a 0 aquí, permitir NaN para validación
+    
+    // Permitir que el campo quede vacío temporalmente o sea inválido para que Zod lo maneje
+    if (isNaN(monto) && valueString.trim() !== "" && valueString.trim() !== "-") {
+        form.setValue(`pagos.${index}.monto`, 0 / 0, { shouldValidate: true, shouldDirty: true }); // Set to NaN
+    } else {
+        form.setValue(`pagos.${index}.monto`, isNaN(monto) ? 0 : monto, { shouldValidate: true, shouldDirty: true });
+    }
+
+    const metodoDelPago = form.getValues(`pagos.${index}.metodo_pago`);
+    if (metodoDelPago) {
+      // Marcar override manual solo si el valor es un número válido o string vacío (para permitir borrar)
+      // Si es un string inválido (ej. "abc"), no necesariamente es un override intencional del *valor*
+      if (!isNaN(monto) || valueString.trim() === "") {
+        setManualOverride(prev => ({ ...prev, [metodoDelPago]: true }));
+      }
+    }
   };
 
   // --- Submit --- 
@@ -250,11 +315,17 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
   };
 
   const handlePdfModalClosed = () => {
-    // Esta función se llama cuando el modal de PDF se cierra (después de generar el PDF)
+    // Esta función se llama cuando el modal de PDF se cierra
     toast({ title: "Proceso de Venta Finalizado", description: "La venta se registró y el PDF se procesó." });
-    onSuccess(); // Llamar al onSuccess original para cerrar el modal de VentaForm
-    form.reset(); // Opcional: resetear el formulario de venta para una nueva venta
-    setGeneratedVentaId(undefined); // Limpiar el ID de venta
+    
+    // Primero, resetear el formulario para limpiar los datos.
+    form.reset(); 
+    
+    // Luego, limpiar el ID de venta generado.
+    setGeneratedVentaId(undefined); 
+    
+    // Finalmente, llamar a onSuccess para cerrar el VentaForm (o notificar al padre).
+    onSuccess(); 
   };
 
   // --- Renderizado --- 
@@ -659,7 +730,7 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
           open={isPdfModalOpen} 
           onOpenChange={setIsPdfModalOpen} 
           idVenta={generatedVentaId} 
-          onPdfGenerated={handlePdfModalClosed} 
+          onPdfGeneratedProp={handlePdfModalClosed}
       />
     </>
   );
