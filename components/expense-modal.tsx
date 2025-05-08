@@ -37,12 +37,15 @@ import { v4 as uuidv4 } from "uuid"
 type Tarjeta = {
   id: string
   alias: string
+  cierre_dia?: number
+  venc_dia?: number
 }
 
 type Producto = {
   id: string
   nombre: string
   stock: number
+  costo_unit?: number
 }
 
 // Esquema de validación para el formulario de gastos
@@ -184,13 +187,13 @@ export default function ExpenseModal({ children }: { children: React.ReactNode }
     queryFn: async () => {
       try {
         const supabase = createClient()
-        const { data, error } = await supabase.from("tarjetas").select("id, alias")
+        const { data, error } = await supabase.from("tarjetas").select("id, alias, cierre_dia, venc_dia")
 
         if (error) {
           throw new Error(error.message)
         }
 
-        return data || []
+        return (data || []) as Tarjeta[]
       } catch (error: any) {
         console.error("Error al cargar tarjetas:", error)
         toast({
@@ -220,7 +223,7 @@ export default function ExpenseModal({ children }: { children: React.ReactNode }
           throw new Error(error.message)
         }
 
-        return data || []
+        return (data || []) as Producto[]
       } catch (error: any) {
         console.error("Error al cargar productos:", error)
         return []
@@ -230,11 +233,11 @@ export default function ExpenseModal({ children }: { children: React.ReactNode }
   })
 
   // Obtener el stock disponible y costo del producto seleccionado
-  const productoSeleccionado = productos?.find((p) => p.id === productoId)
+  const productoSeleccionado = productos?.find((p: Producto) => p.id === productoId)
   const stockDisponible = productoSeleccionado?.stock || 0
 
   // Consultar información detallada del producto seleccionado si es necesario
-  const { data: productoDetalle, isLoading: isLoadingProductoDetalle } = useQuery({
+  const { data: productoDetalle, isLoading: isLoadingProductoDetalle } = useQuery<Producto | null>({
     queryKey: ["producto", productoId],
     queryFn: async () => {
       if (!productoId || productoId === "no-producto") return null
@@ -248,7 +251,7 @@ export default function ExpenseModal({ children }: { children: React.ReactNode }
           .single()
 
         if (error) throw new Error(error.message)
-        return data
+        return data as Producto
       } catch (error) {
         console.error("Error al obtener detalles del producto:", error)
         return null
@@ -279,7 +282,7 @@ export default function ExpenseModal({ children }: { children: React.ReactNode }
             .eq("id", values.producto_id)
             .single()
 
-          if (!producto || producto.stock < values.cantidad) {
+          if (!producto || (producto.stock as number) < values.cantidad) {
             throw new Error("Stock insuficiente para este producto")
           }
 
@@ -305,7 +308,7 @@ export default function ExpenseModal({ children }: { children: React.ReactNode }
 
       // Calcular el ciclo de cierre correctamente
       const fechaGasto = values.fecha
-      const corteActual = new Date(fechaGasto.getFullYear(), fechaGasto.getMonth(), tarjeta.cierre_dia)
+      const corteActual = new Date(fechaGasto.getFullYear(), fechaGasto.getMonth(), tarjeta.cierre_dia as number)
 
       // Si la fecha del gasto es posterior al cierre actual, el ciclo es el del mes siguiente
       const ciclo_cierre =
@@ -472,7 +475,7 @@ export default function ExpenseModal({ children }: { children: React.ReactNode }
                                 Error al cargar tarjetas
                               </SelectItem>
                             ) : tarjetas && tarjetas.length > 0 ? (
-                              tarjetas.map((tarjeta) => (
+                              tarjetas.map((tarjeta: Tarjeta) => (
                                 <SelectItem key={tarjeta.id} value={tarjeta.id}>
                                   {tarjeta.alias}
                                 </SelectItem>
@@ -592,7 +595,7 @@ export default function ExpenseModal({ children }: { children: React.ReactNode }
                                 Error al cargar productos
                               </SelectItem>
                             ) : productos && productos.length > 0 ? (
-                              productos.map((producto) => (
+                              productos.map((producto: Producto) => (
                                 <SelectItem key={producto.id} value={producto.id}>
                                   {producto.nombre} (Stock: {producto.stock})
                                 </SelectItem>
@@ -721,7 +724,7 @@ export default function ExpenseModal({ children }: { children: React.ReactNode }
                                 Error al cargar tarjetas
                               </SelectItem>
                             ) : tarjetas && tarjetas.length > 0 ? (
-                              tarjetas.map((tarjeta) => (
+                              tarjetas.map((tarjeta: Tarjeta) => (
                                 <SelectItem key={tarjeta.id} value={tarjeta.id}>
                                   {tarjeta.alias}
                                 </SelectItem>
@@ -811,7 +814,7 @@ export default function ExpenseModal({ children }: { children: React.ReactNode }
                                 Error al cargar productos
                               </SelectItem>
                             ) : productos && productos.length > 0 ? (
-                              productos.map((producto) => (
+                              productos.map((producto: Producto) => (
                                 <SelectItem key={producto.id} value={producto.id}>
                                   {producto.nombre} (Stock: {producto.stock})
                                 </SelectItem>
@@ -924,7 +927,7 @@ export default function ExpenseModal({ children }: { children: React.ReactNode }
                                 Error al cargar tarjetas
                               </SelectItem>
                             ) : tarjetas && tarjetas.length > 0 ? (
-                              tarjetas.map((tarjeta) => (
+                              tarjetas.map((tarjeta: Tarjeta) => (
                                 <SelectItem key={tarjeta.id} value={tarjeta.id}>
                                   {tarjeta.alias}
                                 </SelectItem>
@@ -1012,7 +1015,7 @@ export default function ExpenseModal({ children }: { children: React.ReactNode }
                                 Error al cargar productos
                               </SelectItem>
                             ) : productos && productos.length > 0 ? (
-                              productos.map((producto) => (
+                              productos.map((producto: Producto) => (
                                 <SelectItem key={producto.id} value={producto.id}>
                                   {producto.nombre} (Stock: {producto.stock})
                                 </SelectItem>

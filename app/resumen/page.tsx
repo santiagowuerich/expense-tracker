@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { format, addMonths, parseISO, addDays, isWithinInterval, startOfDay, endOfDay } from "date-fns"
 import { es } from "date-fns/locale"
-import { ArrowLeft, Download, CalendarIcon, Check, ChevronsUpDown } from "lucide-react"
+import { ArrowLeft, Download, CalendarIcon, Check, ChevronsUpDown, Trash2 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase-browser"
 import { useState, useMemo } from "react"
@@ -678,27 +678,32 @@ export default function ResumenPage() {
   };
 
   return (
-    <div className="container mx-auto max-w-7xl py-6 px-4 sm:px-6 lg:px-8">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
-        <div className="flex items-center w-full sm:w-auto">
-          <Button variant="ghost" size="sm" onClick={() => router.push("/")} className="mr-2 sm:mr-4 flex-shrink-0 p-2 sm:p-1">
+    <div className="container mx-auto py-6 px-4 sm:px-6 lg:px-8">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+        <div className="flex items-center">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => router.push('/')}
+            className="mr-2 sm:mr-4 h-9 w-9"
+            aria-label="Volver al inicio"
+          >
             <ArrowLeft className="h-5 w-5" />
-            <span className="hidden sm:inline ml-1">Volver</span>
           </Button>
           <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-primary truncate">Resumen de Gastos</h1>
         </div>
-        <div className="w-full sm:w-auto flex justify-end">
-            <Button
-                variant="outline"
-                size="sm"
-                onClick={descargarCSV}
-                disabled={!pagosFiltrados || pagosFiltrados.length === 0}
-                className="flex-shrink-0"
-            >
-                <Download className="mr-2 h-4 w-4" />
-                <span className="hidden sm:inline">Descargar CSV</span>
-                <span className="sm:hidden">CSV</span>
-            </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => router.push('/resumen/eliminar-pagos')}
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            Eliminar pagos
+          </Button>
+          <Button variant="outline" onClick={descargarCSV}>
+            <Download className="mr-2 h-4 w-4" />
+            Descargar CSV
+          </Button>
         </div>
       </div>
 

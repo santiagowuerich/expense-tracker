@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase-browser";
 import { parseISO, format, isAfter, startOfDay } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -38,6 +38,13 @@ type PagoCuotaRaw = {
   cuotas: number;
   ciclo_cierre: string | null;
 };
+
+// Tipo para los resultados de la eliminación de pagos
+export interface ResultadoEliminacionPago {
+  pago_id: string;
+  exito: boolean;
+  mensaje: string;
+}
 
 // --- Funciones Helper ---
 
@@ -201,6 +208,34 @@ export function useCuotasDetalle(idCompra: string | null) {
     },
     enabled: !!idCompra, // La query solo se activa si idCompra tiene un valor
     staleTime: 10 * 60 * 1000, // Cachear detalle por 10 minutos
+  });
+}
+
+/**
+ * Hook para eliminar múltiples pagos en lote.
+ * Permite eliminar uno o varios pagos, incluyendo pagos en cuotas.
+ */
+export function useEliminarPagosBatch() {
+  const queryClient = useQueryClient();
+
+  return useMutation<ResultadoEliminacionPago[], Error, string[]>({
+    mutationFn: async (pagoIds: string[]) => {
+      const supabase = createClient();
+
+      // Llamar a la función RPC para eliminar múltiples pagos
+      const { data, error } = await supabase
+        .rpc('eliminar_pagos_batch', {
+          _pago_ids: pagoIds
+        });
+
+      if (error) throw error;
+      return data as ResultadoEliminacionPago[]; // Devuelve resultados para cada pago
+    },
+    onSuccess: () => {
+      // Invalidar consultas para actualizar la UI
+      queryClient.invalidateQueries({ queryKey: ['resumenBase'] });
+      queryClient.invalidateQueries({ queryKey: ['comprasResumen'] });
+    }
   });
 }
 

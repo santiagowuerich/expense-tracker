@@ -90,37 +90,59 @@ interface DateFilterRange {
   to?: Date;
 }
 
-// Hook para obtener historial de ventas con filtro de fecha opcional
-export function useVentas(filterRange?: DateFilterRange) {
-  // Usar las fechas (convertidas a ISO string) en la queryKey para que React Query detecte cambios
-  const queryKey = ['ventas', filterRange?.from?.toISOString(), filterRange?.to?.toISOString()];
+// Interfaz para los resultados de eliminación de ventas
+export interface ResultadoEliminacionVenta {
+  venta_id: string;
+  exito: boolean;
+  mensaje: string;
+}
+
+// Hook para obtener historial de ventas con filtro de fecha opcional y filtro de búsqueda
+export function useVentas(filterRange?: DateFilterRange, searchTerm?: string) {
+  const queryKey = ['ventas', filterRange?.from?.toISOString(), filterRange?.to?.toISOString(), searchTerm];
 
   return useQuery({
     queryKey: queryKey,
     queryFn: async () => {
       const supabase = createClient();
-      let query = supabase
-        .from('ventas')
-        .select(`
-          *,
-          clientes (*)
-        `)
-        .order('fecha', { ascending: false });
+      let query;
+      const trimmedSearchTerm = searchTerm?.trim();
 
-      // Aplicar filtros de fecha si existen
+      if (trimmedSearchTerm) {
+        // Cuando se busca, queremos un INNER JOIN implícito con clientes
+        // y filtrar por el nombre DEL CLIENTE o su DNI/CUIT.
+        query = supabase
+          .from('ventas')
+          .select('*, clientes!inner(*)') // Forza INNER JOIN
+          .or(
+            `nombre.ilike.%${trimmedSearchTerm}%,` +
+            `dni_cuit.ilike.%${trimmedSearchTerm}%`,
+            { referencedTable: 'clientes' }
+          );
+      } else {
+        // Comportamiento por defecto: LEFT JOIN con clientes
+        query = supabase
+          .from('ventas')
+          .select('*, clientes(*)');
+      }
+
+      // Aplicar ordenamiento común y filtros de fecha
+      query = query.order('fecha', { ascending: false });
+
       if (filterRange?.from) {
-        // Asegurarse de usar ISO string para la comparación en Supabase
         query = query.gte('fecha', filterRange.from.toISOString());
       }
       if (filterRange?.to) {
-        // Incluir todo el día final usando endOfDay
         const endOfDayTo = endOfDay(filterRange.to);
         query = query.lte('fecha', endOfDayTo.toISOString());
       }
 
       const { data, error } = await query;
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error en la consulta de Supabase para ventas:', error);
+        throw error;
+      }
 
       // Transformar los datos para ajustarlos a nuestra interfaz
       return (data || []).map((venta: any) => ({
@@ -129,10 +151,10 @@ export function useVentas(filterRange?: DateFilterRange) {
         fecha: venta.fecha,
         total: venta.total,
         created_at: venta.created_at,
-        cliente: venta.clientes as any as Cliente
+        cliente: venta.clientes as any as Cliente,
+        pagos: venta.pagos || [],
       })) as Venta[];
-    }
-    // No es necesario 'enabled' aquí, la queryKey maneja el refetch
+    },
   });
 }
 
@@ -189,5 +211,29 @@ export function useVentaDetalle(ventaId: string | null) {
       } as Venta;
     },
     enabled: !!ventaId
+  });
+}
+
+// Hook para eliminar ventas en lote
+export function useEliminarVentasBatch() {
+  const queryClient = useQueryClient();
+  
+  return useMutation<ResultadoEliminacionVenta[], Error, string[]>({
+    mutationFn: async (ventaIds: string[]) => {
+      const supabase = createClient();
+      
+      // Llamar a la función RPC para eliminar ventas en lote
+      const { data, error } = await supabase.rpc('eliminar_ventas_batch', {
+        _venta_ids: ventaIds
+      });
+      
+      if (error) throw new Error(error.message);
+      return data as ResultadoEliminacionVenta[];
+    },
+    onSuccess: () => {
+      // Invalidar consultas para actualizar la UI
+      queryClient.invalidateQueries({ queryKey: ['ventas'] });
+      queryClient.invalidateQueries({ queryKey: ['productos'] }); // Por si se restaura stock
+    }
   });
 } 

@@ -6,6 +6,7 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { ArrowLeft, Loader2, DownloadCloud, Share2, FileText } from "lucide-react";
 import { BsWhatsapp } from 'react-icons/bs';
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
@@ -13,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency } from "@/hooks/useResumenCompras"; // Reutilizar helper si existe
 import { usePdfActions } from "@/hooks/usePdfActions"; // Importar el nuevo hook
+import { toast } from "sonner";
 
 export default function VentaDetallePage() {
   const router = useRouter();
@@ -20,6 +22,7 @@ export default function VentaDetallePage() {
   const idVenta = params.idVenta as string; // Obtener ID de la ruta
 
   const { data: venta, isLoading, error } = useVentaDetalle(idVenta);
+  
   // Usar el hook de acciones PDF
   const { 
     generatePdf,
@@ -119,7 +122,7 @@ export default function VentaDetallePage() {
           <CardHeader>
             <CardTitle className="text-xl">Acciones del Comprobante</CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-col sm:flex-row gap-3">
+          <CardContent className="flex flex-col sm:flex-row gap-3 flex-wrap">
             <Button 
               onClick={() => generatePdf(true)} 
               disabled={isPdfGenerating || isLoading} // Deshabilitar si carga datos de venta o genera PDF
@@ -244,7 +247,6 @@ export default function VentaDetallePage() {
               </CardContent>
           </Card>
        )}
-
     </div>
   );
 } 

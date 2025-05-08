@@ -6,7 +6,7 @@ import { format, startOfDay, endOfDay, startOfMonth, endOfMonth } from "date-fns
 import { es } from "date-fns/locale";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Loader2, CalendarIcon } from "lucide-react";
+import { ArrowLeft, Loader2, CalendarIcon, Search, Trash2 } from "lucide-react";
 import type { DateRange } from "react-day-picker";
 
 import { useVentas } from "@/hooks/useVentas";
@@ -19,6 +19,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
 
 type FilterMode = 'today' | 'month' | 'custom';
 
@@ -27,6 +28,7 @@ export default function HistorialVentasPage() {
 
   const [filterMode, setFilterMode] = useState<FilterMode>('month');
   const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>(undefined);
+  const [searchTerm, setSearchTerm] = useState<string>("");
 
   const appliedDateRange = useMemo(() => {
     const now = new Date();
@@ -42,7 +44,7 @@ export default function HistorialVentasPage() {
     }
   }, [filterMode, customDateRange]);
 
-  const { data: ventas, isLoading, error } = useVentas(appliedDateRange);
+  const { data: ventas, isLoading, error } = useVentas(appliedDateRange, searchTerm);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("es-AR", {
@@ -83,6 +85,16 @@ export default function HistorialVentasPage() {
             <span className="hidden sm:inline ml-2">Volver</span>
           </Button>
           <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-primary truncate">Historial de Ventas</h1>
+        </div>
+        
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => router.push('/ventas/eliminar-ventas')}
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            Eliminar ventas
+          </Button>
         </div>
       </div>
 
@@ -135,6 +147,19 @@ export default function HistorialVentasPage() {
             </Popover>
           </div>
         )}
+
+        <div className="mt-4 relative">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <Search className="h-4 w-4 text-gray-400" />
+          </div>
+          <Input
+            type="search"
+            placeholder="Buscar por nombre o CUIT del cliente..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10 sm:w-[300px]"
+          />
+        </div>
       </div>
 
       {isLoading ? (
@@ -156,7 +181,13 @@ export default function HistorialVentasPage() {
       ) : !ventas || ventas.length === 0 ? (
         <EmptyState
           title="Sin ventas registradas"
-          description={filterMode === 'custom' && !appliedDateRange ? "Selecciona un rango de fechas personalizado." : "No hay ventas que coincidan con los filtros seleccionados."}
+          description={
+            searchTerm 
+              ? "No hay ventas que coincidan con tu búsqueda."
+              : filterMode === 'custom' && !appliedDateRange 
+                ? "Selecciona un rango de fechas personalizado." 
+                : "No hay ventas que coincidan con los filtros seleccionados."
+          }
         />
       ) : (
         <div>
@@ -169,6 +200,7 @@ export default function HistorialVentasPage() {
                 </div>
                 <p className="text-sm text-muted-foreground mb-3 truncate">
                   {venta.cliente?.nombre || "Cliente N/A"}
+                  {venta.cliente?.dni_cuit && ` - ${venta.cliente.dni_cuit}`}
                 </p>
                 <Button
                   asChild
@@ -197,7 +229,10 @@ export default function HistorialVentasPage() {
                 {ventas.map((venta) => (
                   <TableRow key={venta.id} className="hover:bg-muted/50">
                     <TableCell className="py-3 px-4 text-xs sm:text-sm whitespace-nowrap">{formatDateTable(venta.fecha)}</TableCell>
-                    <TableCell className="py-3 px-4 font-medium text-xs sm:text-sm">{venta.cliente?.nombre || "N/A"}</TableCell>
+                    <TableCell className="py-3 px-4 font-medium text-xs sm:text-sm">
+                      {venta.cliente?.nombre || "N/A"}
+                      {venta.cliente?.dni_cuit && <span className="block text-xs text-muted-foreground mt-0.5">CUIT: {venta.cliente.dni_cuit}</span>}
+                    </TableCell>
                     <TableCell className="text-right py-3 px-4 text-xs sm:text-sm whitespace-nowrap">{formatCurrency(venta.total)}</TableCell>
                     <TableCell className="text-center py-2 px-4">
                       <Button asChild variant="link" size="sm" className="text-xs sm:text-sm">
