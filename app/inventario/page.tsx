@@ -11,6 +11,7 @@ import {
   CreditCard,
   Edit,
   Eye,
+  Trash2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase-browser";
@@ -292,7 +293,53 @@ export default function InventarioPage() {
           </Button>
           <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-primary truncate">Inventario</h1>
         </div>
-        <div className="flex flex-wrap justify-start sm:justify-end gap-2 w-full sm:w-auto">
+        
+        {/* Botones en vista móvil (en grid) */}
+        <div className="grid grid-cols-2 sm:hidden gap-2 w-full">
+          <Button 
+            variant="outline"
+            size="sm"
+            onClick={() => router.push("/reportes")}
+            className="h-10 flex items-center justify-center"
+          >
+            <AlertTriangle className="mr-2 h-4 w-4" />
+            Reportes
+          </Button>
+          <CompraConTarjetaDialog>
+            <Button 
+              size="sm"
+              className="h-10 flex items-center justify-center"
+            >
+              <CreditCard className="mr-2 h-4 w-4" />
+              Registrar Compra
+            </Button>
+          </CompraConTarjetaDialog>
+          <AddProductDialog>
+            <Button 
+              variant="outline" 
+              size="sm"
+              className="h-10 flex items-center justify-center"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Agregar producto
+            </Button>
+          </AddProductDialog>
+          <Button 
+            variant="destructive"
+            size="sm"
+            onClick={() => router.push('/inventario/eliminar-productos')}
+            className="h-10 flex items-center justify-center"
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            Eliminar Productos
+          </Button>
+          <div className="col-span-2">
+            <RealizarVentaButton className="w-full h-10 flex items-center justify-center" />
+          </div>
+        </div>
+        
+        {/* Botones en vista desktop (flex) */}
+        <div className="hidden sm:flex flex-wrap justify-end gap-2">
           <Button variant="outline" size="sm" onClick={() => router.push("/reportes")}>
             <AlertTriangle className="mr-2 h-4 w-4" />
             Reportes
@@ -310,6 +357,14 @@ export default function InventarioPage() {
             </Button>
           </AddProductDialog>
           <RealizarVentaButton />
+          <Button 
+            variant="destructive"
+            size="sm"
+            onClick={() => router.push('/inventario/eliminar-productos')}
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            Eliminar Productos
+          </Button>
         </div>
       </div>
 

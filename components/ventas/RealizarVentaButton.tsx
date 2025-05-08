@@ -1,11 +1,17 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
+import { Button, ButtonProps } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useState } from "react";
 import { VentaForm } from "./VentaForm";
+import { cn } from "@/lib/utils";
+import { ShoppingCart } from "lucide-react";
 
-export function RealizarVentaButton() {
+interface RealizarVentaButtonProps {
+  className?: string;
+}
+
+export function RealizarVentaButton({ className }: RealizarVentaButtonProps) {
   const [open, setOpen] = useState(false);
   const [ventaFormKey, setVentaFormKey] = useState(Date.now());
 
@@ -23,9 +29,13 @@ export function RealizarVentaButton() {
 
   return (
     <>
-      <Button onClick={() => {
-        setOpen(true);
-      }}>
+      <Button 
+        onClick={() => {
+          setOpen(true);
+        }}
+        className={cn(className)}
+      >
+        <ShoppingCart className="mr-2 h-5 w-5" />
         Realizar Venta
       </Button>
 

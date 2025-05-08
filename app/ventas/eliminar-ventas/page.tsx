@@ -18,6 +18,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { formatCurrency } from "@/hooks/useResumenCompras";
 import { EmptyState } from "@/components/empty-state";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
 type MesSeleccionado = string | null; // formato: "YYYY-MM"
 
@@ -163,67 +164,74 @@ export default function EliminarVentasPage() {
       return "Fecha inválida";
     }
   };
+  
+  // Formatear fecha en formato corto para móviles
+  const formatFechaCorta = (fechaString: string) => {
+    try {
+      return format(new Date(fechaString), "dd/MM/yy HH:mm", { locale: es });
+    } catch {
+      return "Fecha inválida";
+    }
+  };
 
   return (
-    <div className="container mx-auto py-6 px-4 sm:px-6 lg:px-8">
+    <div className="container mx-auto py-4 sm:py-6 px-3 sm:px-6 lg:px-8">
       {/* Encabezado y botón volver */}
-      <div className="flex items-center mb-6">
+      <div className="flex items-center mb-4 sm:mb-6">
         <Button
           variant="ghost"
           size="sm"
           onClick={() => router.push('/ventas')}
-          className="mr-4"
+          className="mr-2 sm:mr-4"
         >
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Volver
+          <ArrowLeft className="h-4 w-4 sm:mr-2" />
+          <span className="hidden sm:inline">Volver</span>
         </Button>
-        <h1 className="text-2xl font-bold text-primary">Eliminar Ventas</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-primary">Eliminar Ventas</h1>
       </div>
 
       {/* Filtros */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle className="text-lg">Filtros</CardTitle>
-          <CardDescription>Selecciona un mes para ver las ventas</CardDescription>
+      <Card className="mb-4 sm:mb-6">
+        <CardHeader className="py-3 sm:py-4">
+          <CardTitle className="text-base sm:text-lg">Filtros</CardTitle>
+          <CardDescription className="text-sm">Selecciona un mes para ver las ventas</CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="flex flex-col sm:flex-row gap-4 items-start">
-            <div className="w-full sm:w-64">
-              <Select 
-                value={mesSeleccionado || ""} 
-                onValueChange={(valor) => {
-                  setMesSeleccionado(valor);
-                  setVentasSeleccionadas(new Set());
-                  setMostrarResultados(false);
-                }}
-              >
-                <SelectTrigger>
-                  <div className="flex items-center">
-                    <Calendar className="mr-2 h-4 w-4" />
-                    <SelectValue placeholder="Seleccionar mes" />
-                  </div>
-                </SelectTrigger>
-                <SelectContent>
-                  {opcionesMeses.map((opcion) => (
-                    <SelectItem key={opcion.valor} value={opcion.valor}>
-                      {opcion.etiqueta}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+        <CardContent className="py-2 sm:py-3">
+          <div className="flex flex-col gap-3">
+            <Select 
+              value={mesSeleccionado || ""} 
+              onValueChange={(valor) => {
+                setMesSeleccionado(valor);
+                setVentasSeleccionadas(new Set());
+                setMostrarResultados(false);
+              }}
+            >
+              <SelectTrigger className="w-full">
+                <div className="flex items-center">
+                  <Calendar className="mr-2 h-4 w-4" />
+                  <SelectValue placeholder="Seleccionar mes" />
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                {opcionesMeses.map((opcion) => (
+                  <SelectItem key={opcion.valor} value={opcion.valor}>
+                    {opcion.etiqueta}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             
             {/* Campo de búsqueda */}
-            <div className="w-full sm:w-auto relative">
+            <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <Search className="h-4 w-4 text-gray-400" />
               </div>
               <Input
                 type="search"
-                placeholder="Buscar por nombre o CUIT del cliente..."
+                placeholder="Buscar por nombre o CUIT..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 w-full sm:w-[300px]"
+                className="pl-10 w-full"
               />
             </div>
           </div>
@@ -232,24 +240,24 @@ export default function EliminarVentasPage() {
 
       {/* Mostrar resultados de la eliminación si hay */}
       {mostrarResultados && resultadosEliminacion.length > 0 && (
-        <Card className="mb-6 border-muted">
-          <CardHeader>
-            <CardTitle className="text-lg">Resultados de la eliminación</CardTitle>
-            <CardDescription>
+        <Card className="mb-4 sm:mb-6 border-muted">
+          <CardHeader className="py-3 sm:py-4">
+            <CardTitle className="text-base sm:text-lg">Resultados de la eliminación</CardTitle>
+            <CardDescription className="text-sm">
               Exitosos: {resultadosEliminacion.filter((r: ResultadoEliminacionVenta) => r.exito).length}, 
               Fallidos: {resultadosEliminacion.filter((r: ResultadoEliminacionVenta) => !r.exito).length}
             </CardDescription>
           </CardHeader>
           {resultadosEliminacion.some((r: ResultadoEliminacionVenta) => !r.exito) && (
-            <CardContent>
+            <CardContent className="py-2 sm:py-3">
               <div className="text-sm">
                 <h4 className="font-medium mb-2">Detalles de errores:</h4>
-                <ul className="list-disc ml-5 space-y-1">
+                <ul className="list-disc ml-5 space-y-1 max-h-32 sm:max-h-40 overflow-y-auto">
                   {resultadosEliminacion
                     .filter((r: ResultadoEliminacionVenta) => !r.exito)
                     .map((r: ResultadoEliminacionVenta) => (
                       <li key={r.venta_id}>
-                        Venta ID: {r.venta_id.substr(0, 8)}... - {r.mensaje}
+                        ID: {r.venta_id.substr(0, 8)}... - {r.mensaje}
                       </li>
                     ))
                   }
@@ -257,7 +265,7 @@ export default function EliminarVentasPage() {
               </div>
             </CardContent>
           )}
-          <CardFooter>
+          <CardFooter className="py-2 sm:py-3">
             <Button 
               variant="outline" 
               size="sm"
@@ -271,15 +279,15 @@ export default function EliminarVentasPage() {
 
       {/* Resultados y acciones */}
       {isLoading ? (
-        <div className="space-y-4">
-          <Skeleton className="h-12 w-full" />
-          <Skeleton className="h-64 w-full" />
+        <div className="space-y-3 sm:space-y-4">
+          <Skeleton className="h-10 sm:h-12 w-full rounded-md" />
+          <Skeleton className="h-48 sm:h-64 w-full rounded-md" />
         </div>
       ) : error ? (
         <Card className="border-destructive">
-          <CardHeader>
-            <CardTitle className="text-destructive">Error</CardTitle>
-            <CardDescription className="text-destructive">
+          <CardHeader className="py-3 sm:py-4">
+            <CardTitle className="text-destructive text-base sm:text-lg">Error</CardTitle>
+            <CardDescription className="text-destructive text-sm">
               {error instanceof Error ? error.message : "Error al cargar las ventas"}
             </CardDescription>
           </CardHeader>
@@ -293,18 +301,19 @@ export default function EliminarVentasPage() {
         />
       ) : (
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
+          <CardHeader className="py-3 sm:py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
             <div>
-              <CardTitle>Ventas</CardTitle>
-              <CardDescription>
+              <CardTitle className="text-base sm:text-lg">Ventas</CardTitle>
+              <CardDescription className="text-sm">
                 {ventas.length} venta{ventas.length !== 1 ? 's' : ''} encontrada{ventas.length !== 1 ? 's' : ''}
               </CardDescription>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2 w-full sm:w-auto justify-end">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => seleccionarTodas(ventasSeleccionadas.size !== (ventas?.length || 0))}
+                className="text-xs sm:text-sm h-8 sm:h-9"
               >
                 {ventasSeleccionadas.size === (ventas?.length || 0) ? "Deseleccionar todas" : "Seleccionar todas"}
               </Button>
@@ -314,38 +323,46 @@ export default function EliminarVentasPage() {
                     variant="destructive"
                     size="sm"
                     disabled={ventasSeleccionadas.size === 0 || eliminarVentasMutation.isPending}
+                    className="text-xs sm:text-sm h-8 sm:h-9"
                   >
-                    {eliminarVentasMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Eliminar seleccionadas ({ventasSeleccionadas.size})
+                    {eliminarVentasMutation.isPending && <Loader2 className="mr-1 sm:mr-2 h-3 sm:h-4 w-3 sm:w-4 animate-spin" />}
+                    <Trash2 className="mr-1 sm:mr-2 h-3 sm:h-4 w-3 sm:w-4" />
+                    Eliminar ({ventasSeleccionadas.size})
                   </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent className="sm:max-w-md max-w-[calc(100%-2rem)]">
                   <DialogHeader>
                     <DialogTitle>Confirmar eliminación</DialogTitle>
                     <DialogDescription>
                       ¿Está seguro que desea eliminar {ventasSeleccionadas.size} venta{ventasSeleccionadas.size !== 1 ? 's' : ''}? 
-                      Esta acción revertirá el inventario y no se puede deshacer.
+                      Esta acción no se puede deshacer.
                     </DialogDescription>
                   </DialogHeader>
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setConfirmarDialogOpen(false)}>
+                  <DialogFooter className="flex flex-col sm:flex-row gap-2 sm:gap-0">
+                    <Button 
+                      variant="outline" 
+                      onClick={() => setConfirmarDialogOpen(false)}
+                      className="w-full sm:w-auto"
+                    >
                       Cancelar
                     </Button>
                     <Button 
                       variant="destructive" 
                       onClick={eliminarVentasSeleccionadas}
                       disabled={eliminarVentasMutation.isPending}
+                      className="w-full sm:w-auto"
                     >
                       {eliminarVentasMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      {eliminarVentasMutation.isPending ? "Eliminando..." : "Eliminar"}
+                      {eliminarVentasMutation.isPending ? "Eliminando..." : "Eliminar definitivamente"}
                     </Button>
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
             </div>
           </CardHeader>
-          <CardContent>
+          
+          {/* Vista de tabla para pantallas medianas y grandes */}
+          <CardContent className="hidden sm:block py-2 sm:py-3">
             <div className="overflow-x-auto rounded-md border">
               <Table>
                 <TableHeader>
@@ -394,6 +411,56 @@ export default function EliminarVentasPage() {
                   })}
                 </TableBody>
               </Table>
+            </div>
+          </CardContent>
+          
+          {/* Vista de tarjetas para dispositivos móviles */}
+          <CardContent className="sm:hidden py-2">
+            <div className="space-y-3">
+              {ventas?.map((venta) => {
+                const metodosPago = obtenerMetodosPago(venta);
+                  
+                return (
+                  <div
+                    key={venta.id}
+                    className={cn(
+                      "border rounded-md p-3 relative cursor-pointer",
+                      ventasSeleccionadas.has(venta.id) ? "bg-muted border-primary" : ""
+                    )}
+                    onClick={() => toggleSeleccion(venta.id)}
+                  >
+                    <div className="absolute top-3 right-3">
+                      <Checkbox 
+                        checked={ventasSeleccionadas.has(venta.id)}
+                        onCheckedChange={() => toggleSeleccion(venta.id)}
+                      />
+                    </div>
+                    <div className="pr-8">
+                      <div className="flex justify-between items-start mb-1">
+                        <div className="flex-grow">
+                          <div className="font-medium text-sm">{venta.cliente?.nombre || "N/A"}</div>
+                          {venta.cliente?.dni_cuit && 
+                            <div className="text-xs text-muted-foreground">
+                              {venta.cliente.dni_cuit}
+                            </div>
+                          }
+                        </div>
+                        <div className="text-right text-sm font-semibold">
+                          {formatCurrency(venta.total)}
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-x-2 gap-y-1 mt-2 text-xs text-muted-foreground">
+                        <div>Fecha:</div>
+                        <div className="text-right">{formatFechaCorta(venta.fecha)}</div>
+                        
+                        <div>Pago:</div>
+                        <div className="text-right capitalize truncate">{metodosPago}</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </CardContent>
         </Card>

@@ -380,17 +380,19 @@ export default function EliminarPagosPage() {
   return (
     <div className="container mx-auto py-6 px-4 sm:px-6 lg:px-8">
       {/* Encabezado y botón volver */}
-      <div className="flex items-center mb-6">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => router.push('/resumen')}
-          className="mr-4"
-        >
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Volver
-        </Button>
-        <h1 className="text-2xl font-bold text-primary">Eliminar Pagos</h1>
+      <div className="flex flex-wrap items-center justify-between mb-6 gap-2">
+        <div className="flex items-center">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => router.push('/resumen')}
+            className="mr-2 sm:mr-4"
+          >
+            <ArrowLeft className="h-5 w-5" />
+            <span className="sr-only">Volver</span>
+          </Button>
+          <h1 className="text-xl sm:text-2xl font-bold text-primary">Eliminar Pagos</h1>
+        </div>
       </div>
 
       {/* Filtros */}
@@ -401,7 +403,7 @@ export default function EliminarPagosPage() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-col sm:flex-row gap-4 items-start">
-            <div className="w-full sm:w-64">
+            <div className="w-full">
               <Select 
                 value={mesSeleccionado || ""} 
                 onValueChange={(valor) => {
@@ -426,7 +428,7 @@ export default function EliminarPagosPage() {
               </Select>
             </div>
             
-            <div className="w-full sm:w-56">
+            <div className="w-full">
               <Select 
                 value={metodoPago} 
                 onValueChange={(valor: MetodoPago) => {
@@ -451,7 +453,7 @@ export default function EliminarPagosPage() {
             </div>
             
             {/* Campo de búsqueda */}
-            <div className="w-full sm:w-auto relative">
+            <div className="w-full relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <Search className="h-4 w-4 text-gray-400" />
               </div>
@@ -460,7 +462,7 @@ export default function EliminarPagosPage() {
                 placeholder="Buscar por descripción o tarjeta..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 w-full sm:w-[300px]"
+                className="pl-10 w-full"
               />
             </div>
           </div>
@@ -481,7 +483,7 @@ export default function EliminarPagosPage() {
             <CardContent>
               <div className="text-sm">
                 <h4 className="font-medium mb-2">Detalles de errores:</h4>
-                <ul className="list-disc ml-5 space-y-1">
+                <ul className="list-disc ml-5 space-y-1 max-h-[200px] overflow-y-auto">
                   {resultadosEliminacion
                     .filter(r => !r.exito)
                     .map(r => (
@@ -494,10 +496,11 @@ export default function EliminarPagosPage() {
               </div>
             </CardContent>
           )}
-          <CardFooter>
+          <CardFooter className="flex justify-center sm:justify-start">
             <Button 
               variant="outline" 
               size="sm"
+              className="w-full sm:w-auto"
               onClick={() => setMostrarResultados(false)}
             >
               Ocultar resultados
@@ -537,7 +540,8 @@ export default function EliminarPagosPage() {
                 {data.length} pago{data.length !== 1 ? 's' : ''} encontrado{data.length !== 1 ? 's' : ''}
               </CardDescription>
             </div>
-            <div className="flex gap-2">
+            {/* Botones para vista escritorio */}
+            <div className="hidden md:flex gap-2">
               <Button
                 variant="outline"
                 size="sm"
@@ -582,8 +586,114 @@ export default function EliminarPagosPage() {
               </Dialog>
             </div>
           </CardHeader>
+          
+          {/* Botones para vista móvil */}
+          <div className="md:hidden px-4 pb-4 flex flex-col gap-2">
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => seleccionarTodos(pagosSeleccionados.size !== (data?.length || 0))}
+            >
+              {pagosSeleccionados.size === (data?.length || 0) ? "Deseleccionar todos" : "Seleccionar todos"}
+            </Button>
+            <Dialog open={confirmarDialogOpen} onOpenChange={setConfirmarDialogOpen}>
+              <DialogTrigger asChild>
+                <Button
+                  variant="destructive"
+                  className="w-full"
+                  disabled={pagosSeleccionados.size === 0 || eliminarPagosMutation.isPending}
+                >
+                  {eliminarPagosMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Eliminar seleccionados ({pagosSeleccionados.size})
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="w-[95%] rounded-lg">
+                <DialogHeader>
+                  <DialogTitle>Confirmar eliminación</DialogTitle>
+                  <DialogDescription>
+                    ¿Está seguro que desea eliminar {pagosSeleccionados.size} pago{pagosSeleccionados.size !== 1 ? 's' : ''}? 
+                    Esta acción no se puede deshacer.
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter className="flex-col gap-2 sm:flex-row">
+                  <Button 
+                    variant="outline" 
+                    className="w-full" 
+                    onClick={() => setConfirmarDialogOpen(false)}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button 
+                    variant="destructive" 
+                    className="w-full"
+                    onClick={eliminarPagosSeleccionados}
+                    disabled={eliminarPagosMutation.isPending}
+                  >
+                    {eliminarPagosMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {eliminarPagosMutation.isPending ? "Eliminando..." : "Eliminar"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
           <CardContent>
-            <div className="overflow-x-auto rounded-md border">
+            {/* Vista móvil: tarjetas */}
+            <div className="md:hidden space-y-4">
+              {data.map((pago) => {
+                const isSeleccionado = isPagoSeleccionado(pago);
+                
+                return (
+                  <div 
+                    key={pago.id} 
+                    className={`border rounded-lg p-4 ${isSeleccionado ? 'border-primary bg-primary/5' : 'border-border'}`}
+                    onClick={() => toggleSeleccion(pago)}
+                  >
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center">
+                        <Checkbox 
+                          checked={isSeleccionado}
+                          onCheckedChange={() => toggleSeleccion(pago)}
+                          className="mr-3"
+                        />
+                        <div>
+                          <div className="font-medium line-clamp-2">{pago.descripcion_base}</div>
+                          <div className="text-sm text-muted-foreground">{formatFecha(pago.fecha)}</div>
+                        </div>
+                      </div>
+                      <div className="font-semibold text-right">
+                        {formatCurrency(pago.monto_total)}
+                      </div>
+                    </div>
+                    
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      {pago.payment_method && (
+                        <Badge variant="outline" className="flex items-center gap-1">
+                          {getMetodoPagoIcon(pago.payment_method)}
+                          <span>{pago.payment_method.charAt(0).toUpperCase() + pago.payment_method.slice(1)}</span>
+                        </Badge>
+                      )}
+                      
+                      {pago.tarjeta_alias && pago.payment_method === 'tarjeta' && (
+                        <Badge variant="outline" className="flex items-center gap-1">
+                          <CreditCard className="h-3 w-3" />
+                          {pago.tarjeta_alias}
+                        </Badge>
+                      )}
+                      
+                      {pago.total_cuotas > 1 && (
+                        <Badge variant="outline" className="flex items-center gap-1">
+                          {pago.total_cuotas} cuotas
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            
+            {/* Vista desktop: tabla */}
+            <div className="hidden md:block overflow-x-auto rounded-md border">
               <Table>
                 <TableHeader>
                   <TableRow>
