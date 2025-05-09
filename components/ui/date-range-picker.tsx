@@ -61,6 +61,13 @@ const datePresets = [
     }),
   },
   {
+    label: "Este mes completo",
+    getRange: () => ({
+      from: startOfMonth(new Date()),
+      to: endOfMonth(new Date()),
+    }),
+  },
+  {
     label: "Mes pasado",
     getRange: () => {
       const lastMonth = subMonths(new Date(), 1);
@@ -71,31 +78,61 @@ const datePresets = [
     },
   },
   {
-      label: "Mes siguiente",
-      getRange: () => {
-          const nextMonth = addMonths(new Date(), 1);
-          return {
-              from: startOfMonth(nextMonth),
-              to: endOfMonth(nextMonth),
-          };
-      }
+    label: "Mes pasado completo",
+    getRange: () => {
+      const lastMonth = subMonths(new Date(), 1);
+      return {
+        from: startOfMonth(lastMonth),
+        to: endOfMonth(lastMonth),
+      };
+    },
   },
   {
-      label: "Este año",
-      getRange: () => ({
-          from: startOfYear(new Date()),
-          to: endOfDay(new Date()),
-      }),
+    label: "Hace 2 meses",
+    getRange: () => {
+      const twoMonthsAgo = subMonths(new Date(), 2);
+      return {
+        from: startOfMonth(twoMonthsAgo),
+        to: endOfMonth(twoMonthsAgo),
+      };
+    },
   },
   {
-      label: "Año pasado",
-      getRange: () => {
-          const lastYear = subYears(new Date(), 1);
-          return {
-              from: startOfYear(lastYear),
-              to: endOfYear(lastYear),
-          };
-      }
+    label: "Hace 3 meses",
+    getRange: () => {
+      const threeMonthsAgo = subMonths(new Date(), 3);
+      return {
+        from: startOfMonth(threeMonthsAgo),
+        to: endOfMonth(threeMonthsAgo),
+      };
+    },
+  },
+  {
+    label: "Mes siguiente",
+    getRange: () => {
+      const nextMonth = addMonths(new Date(), 1);
+      return {
+        from: startOfMonth(nextMonth),
+        to: endOfMonth(nextMonth),
+      };
+    }
+  },
+  {
+    label: "Este año",
+    getRange: () => ({
+      from: startOfYear(new Date()),
+      to: endOfDay(new Date()),
+    }),
+  },
+  {
+    label: "Año pasado",
+    getRange: () => {
+      const lastYear = subYears(new Date(), 1);
+      return {
+        from: startOfYear(lastYear),
+        to: endOfYear(lastYear),
+      };
+    }
   }
 ];
 

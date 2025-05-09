@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { z } from "zod"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -19,7 +19,7 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { useToast } from "@/components/ui/use-toast"
-import { createClient, verificarTablas } from "@/lib/supabase-browser"
+import { createClient } from "@/lib/supabase-browser"
 import { queryClient } from "@/lib/queries"
 
 const formSchema = z.object({
@@ -30,7 +30,20 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>
 
-export default function AddCardDialog({ children }: { children?: React.ReactNode }) {
+interface Tarjeta {
+  id: string
+  alias: string
+  cierre_dia: number
+  venc_dia: number
+}
+
+interface EditCardDialogProps {
+  tarjeta: Tarjeta
+  children?: React.ReactNode
+  onSuccess?: () => void
+}
+
+export default function EditCardDialog({ tarjeta, children, onSuccess }: EditCardDialogProps) {
   const [open, setOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const { toast } = useToast()
@@ -38,36 +51,37 @@ export default function AddCardDialog({ children }: { children?: React.ReactNode
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      alias: "",
-      cierre_dia: 1,
-      venc_dia: 10,
+      alias: tarjeta.alias,
+      cierre_dia: tarjeta.cierre_dia,
+      venc_dia: tarjeta.venc_dia,
     },
   })
+
+  // Actualizar el formulario cuando cambia la tarjeta seleccionada
+  useEffect(() => {
+    if (tarjeta && open) {
+      form.reset({
+        alias: tarjeta.alias,
+        cierre_dia: tarjeta.cierre_dia,
+        venc_dia: tarjeta.venc_dia,
+      })
+    }
+  }, [tarjeta, form, open])
 
   const onSubmit = async (values: FormValues) => {
     setIsSubmitting(true)
     try {
-      // Verificar si las tablas existen antes de intentar insertar
-      const tablasExisten = await verificarTablas()
-      if (!tablasExisten) {
-        throw new Error(
-          "Las tablas necesarias no existen en la base de datos. Por favor ejecute el script de configuración.",
-        )
-      }
-
       const supabase = createClient()
 
-      // Imprimir valores para depuración
-      console.log("Intentando guardar tarjeta con valores:", values)
-
-      // Insertar directamente usando el cliente de Supabase
+      // Actualizar la tarjeta en Supabase
       const { data, error } = await supabase
         .from("tarjetas")
-        .insert({
+        .update({
           alias: values.alias,
           cierre_dia: values.cierre_dia,
           venc_dia: values.venc_dia,
         })
+        .eq('id', tarjeta.id)
         .select()
 
       // Imprimir respuesta para depuración
@@ -75,26 +89,28 @@ export default function AddCardDialog({ children }: { children?: React.ReactNode
 
       if (error) {
         console.error("Error detallado de Supabase:", JSON.stringify(error, null, 2))
-        throw new Error(error.message || "Error desconocido al guardar la tarjeta")
+        throw new Error(error.message || "Error desconocido al actualizar la tarjeta")
       }
 
       toast({
-        title: "Tarjeta creada",
-        description: "La tarjeta ha sido agregada exitosamente",
+        title: "Tarjeta actualizada",
+        description: "La tarjeta ha sido modificada exitosamente",
       })
 
       // Invalidar la caché de consultas para refrescar los datos
       queryClient.invalidateQueries({ queryKey: ["tarjetas"] })
       queryClient.invalidateQueries({ queryKey: ["resumen"] })
 
-      form.reset()
+      if (onSuccess) {
+        onSuccess()
+      }
+
       setOpen(false)
     } catch (error: any) {
-      console.error("Error completo al guardar la tarjeta:", error)
+      console.error("Error completo al actualizar la tarjeta:", error)
 
-      // Asegurarse de que siempre haya un mensaje de error
       const errorMessage =
-        error?.message || "Error desconocido al guardar la tarjeta. Verifique la consola para más detalles."
+        error?.message || "Error desconocido al actualizar la tarjeta. Verifique la consola para más detalles."
 
       toast({
         title: "Error",
@@ -108,12 +124,12 @@ export default function AddCardDialog({ children }: { children?: React.ReactNode
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{children || <Button>Agregar tarjeta</Button>}</DialogTrigger>
+      <DialogTrigger asChild>{children || <Button variant="outline" size="sm">Editar</Button>}</DialogTrigger>
       <DialogContent className="sm:max-w-[425px] max-w-[90vw]">
         <DialogHeader>
-          <DialogTitle>Agregar nueva tarjeta</DialogTitle>
+          <DialogTitle>Editar tarjeta</DialogTitle>
           <DialogDescription>
-            Ingresa los detalles de tu tarjeta para realizar un seguimiento de tus gastos.
+            Modifica los detalles de tu tarjeta.
           </DialogDescription>
         </DialogHeader>
 
@@ -165,7 +181,7 @@ export default function AddCardDialog({ children }: { children?: React.ReactNode
 
             <DialogFooter className="flex-col sm:flex-row pt-4">
               <Button type="submit" className="mt-2 sm:mt-0 w-full sm:w-auto h-10" disabled={isSubmitting}>
-                {isSubmitting ? "Guardando..." : "Guardar"}
+                {isSubmitting ? "Guardando..." : "Guardar cambios"}
               </Button>
             </DialogFooter>
           </form>
@@ -173,4 +189,4 @@ export default function AddCardDialog({ children }: { children?: React.ReactNode
       </DialogContent>
     </Dialog>
   )
-}
+} 

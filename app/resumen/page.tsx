@@ -20,6 +20,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/empty-state"
 import AddCardDialog from "@/components/add-card-dialog"
+import ManageCardsDialog from "@/components/manage-cards-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -42,6 +43,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import PagosFuturosPorMes from "@/components/pagos-futuros-por-mes"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import CashPaymentsModal from "@/components/cash-payments-modal"
+import { DatePickerWithRange } from "@/components/ui/date-range-picker"
 
 // Definiciones de tipos existentes
 type Tarjeta = {
@@ -762,54 +764,10 @@ export default function ResumenPage() {
                </div>
 
                <div className="w-full sm:w-auto">
-                 <Popover>
-                   <PopoverTrigger asChild>
-                     <Button
-                       id="date"
-                       variant={"outline"}
-                       className={cn(
-                         "w-full sm:w-[280px] justify-start text-left font-normal",
-                         !dateRange && "text-muted-foreground"
-                       )}
-                     >
-                       <CalendarIcon className="mr-2 h-4 w-4 flex-shrink-0" />
-                       <span className="truncate">
-                           {dateRange?.from ? (
-                             dateRange.to ? (
-                               <>
-                                 {format(dateRange.from, "d MMM", { locale: es })} -{" "}
-                                 {format(dateRange.to, "d MMM", { locale: es })}
-                               </>
-                             ) : (
-                               format(dateRange.from, "d MMM", { locale: es })
-                             )
-                           ) : (
-                             <span>Seleccionar fechas</span>
-                           )}
-                       </span>
-                     </Button>
-                   </PopoverTrigger>
-                   <PopoverContent className="w-auto p-0" align="start">
-                     <Calendar
-                       initialFocus
-                       mode="range"
-                       defaultMonth={dateRange?.from}
-                       selected={dateRange}
-                       onSelect={setDateRange}
-                       numberOfMonths={1}
-                       className="sm:hidden"
-                     />
-                     <Calendar
-                       initialFocus
-                       mode="range"
-                       defaultMonth={dateRange?.from}
-                       selected={dateRange}
-                       onSelect={setDateRange}
-                       numberOfMonths={2}
-                       className="hidden sm:block"
-                     />
-                   </PopoverContent>
-                 </Popover>
+                 <DatePickerWithRange
+                   date={dateRange}
+                   onDateChange={setDateRange}
+                 />
                </div>
             </div>
           </div>
@@ -1051,11 +1009,11 @@ export default function ResumenPage() {
                </CardDescription>
              </CardHeader>
              <CardFooter className="pt-2 pb-4 px-4 sm:px-6">
-                <AddCardDialog>
+                <ManageCardsDialog>
                     <Button variant="outline" size="sm" className="py-2 px-3">
                         Gestionar Tarjetas
                     </Button>
-                </AddCardDialog>
+                </ManageCardsDialog>
              </CardFooter>
            </Card>
         </>
