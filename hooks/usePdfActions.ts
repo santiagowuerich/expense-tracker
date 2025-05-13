@@ -111,7 +111,7 @@ export function usePdfActions(idVenta: string | null) {
 
       autoTable(doc, {
         startY: yPos,
-        head: [['Descripción', 'Cant.', 'P. Unit.', 'Subtotal']],
+        head: [['Producto', 'Cant.', 'P. Unit.', 'Subtotal']],
         body: (ventaDetalle.items || []).map(item => [
           item.producto_nombre || 'N/A',
           item.cantidad.toString(),
