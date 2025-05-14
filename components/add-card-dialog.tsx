@@ -57,8 +57,15 @@ export default function AddCardDialog({ children }: { children?: React.ReactNode
 
       const supabase = createClient()
 
+      // Obtener el usuario actual para asociar la tarjeta
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+      if (authError || !user) {
+        throw new Error(authError?.message || "Usuario no autenticado. No se puede guardar la tarjeta.");
+      }
+
       // Imprimir valores para depuración
-      console.log("Intentando guardar tarjeta con valores:", values)
+      console.log("Intentando guardar tarjeta con valores:", values, "para el usuario:", user.id)
 
       // Insertar directamente usando el cliente de Supabase
       const { data, error } = await supabase
@@ -67,6 +74,7 @@ export default function AddCardDialog({ children }: { children?: React.ReactNode
           alias: values.alias,
           cierre_dia: values.cierre_dia,
           venc_dia: values.venc_dia,
+          user_id: user.id,
         })
         .select()
 

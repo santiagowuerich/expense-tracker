@@ -8,13 +8,24 @@ import CompraConTarjetaDialog from "@/components/compra-con-tarjeta-dialog"
 import AddCardDialog from "@/components/add-card-dialog"
 import BusinessProfileModal from "@/components/business-profile-modal"
 import { RealizarVentaButton } from "@/components/ventas/RealizarVentaButton"
+import { UserNav } from "@/components/user-nav"
+import { useUser } from "@/lib/user-provider"
 
 export default function Home() {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
+  const { user, isLoading } = useUser()
 
   return (
-    <div className="container flex flex-col items-center justify-center min-h-screen py-12 px-4 relative">
-      <div className="max-w-md w-full space-y-8">
+    <div className="container flex flex-col items-center min-h-screen py-12 px-4 relative">
+      <div className="absolute top-6 right-6">
+        {isLoading ? (
+          <div className="h-8 w-8 bg-muted rounded-full animate-pulse"></div>
+        ) : (
+          <UserNav user={user} />
+        )}
+      </div>
+
+      <div className="max-w-md w-full space-y-8 pt-16">
         <div className="text-center">
           <h1 className="text-3xl font-bold tracking-tight">Control de Gastos</h1>
           <p className="mt-2 text-muted-foreground">Registra y visualiza tus gastos de manera sencilla</p>

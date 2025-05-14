@@ -1,10 +1,20 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase-server"
+import { cookies } from 'next/headers';
 
 export async function POST(request: Request) {
   try {
-    const supabase = createClient()
+    const cookieStore = cookies();
+    const supabase = createClient(cookieStore);
     const body = await request.json()
+
+    // Obtener el usuario actual
+    const { data: { user } } = await supabase.auth.getUser()
+    
+    // Verificar que el usuario esté autenticado
+    if (!user) {
+      return NextResponse.json({ error: "Usuario no autenticado" }, { status: 401 })
+    }
 
     // Validación básica
     if (!body.id) {
@@ -14,13 +24,18 @@ export async function POST(request: Request) {
     // Obtener datos actuales del producto para comparar cambios
     const { data: productoActual, error: errorConsulta } = await supabase
       .from("productos")
-      .select("costo_unit, precio_unit")
+      .select("costo_unit, precio_unit, user_id")
       .eq("id", body.id)
       .single()
 
     if (errorConsulta) {
       console.error("Error al consultar producto:", errorConsulta)
       return NextResponse.json({ error: "Error al consultar producto" }, { status: 500 })
+    }
+
+    // Verificar que el producto pertenezca al usuario actual
+    if (productoActual.user_id !== user.id) {
+      return NextResponse.json({ error: "No tienes permiso para editar este producto" }, { status: 403 })
     }
 
     // Preparar datos para actualización
@@ -47,6 +62,7 @@ export async function POST(request: Request) {
         producto_id: body.id,
         tipo: "costo",
         precio: body.costo_unit,
+        user_id: user.id
       })
     }
 
@@ -56,6 +72,7 @@ export async function POST(request: Request) {
         producto_id: body.id,
         tipo: "venta",
         precio: body.precio_unit,
+        user_id: user.id
       })
     }
 

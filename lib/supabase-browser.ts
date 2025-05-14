@@ -1,31 +1,34 @@
 "use client"
 
-import { createClient as createSupabaseClient } from "@supabase/supabase-js"
+// Importar createBrowserClient de @supabase/ssr
+import { createBrowserClient as oryginalCreateBrowserClient} from '@supabase/ssr'
 
-let client: ReturnType<typeof createSupabaseClient> | null = null
+// Tipar explícitamente el cliente para mayor claridad
+import type { SupabaseClient } from '@supabase/supabase-js';
 
-export function createClient() {
-  // Asegurarse de que solo se ejecute en el navegador
+let client: SupabaseClient | null = null;
+
+export function createClient(): SupabaseClient {
   if (typeof window === 'undefined') {
     throw new Error('createClient (supabase-browser) solo debe llamarse en el lado del cliente.');
   }
 
-  if (client) return client
-
-  // Usar las variables de entorno disponibles a través de process.env
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    console.error("Faltan variables de entorno de Supabase")
-    throw new Error("Faltan variables de entorno de Supabase")
+  if (client) {
+    return client;
   }
 
-  client = createSupabaseClient(supabaseUrl, supabaseAnonKey, {
-    // db: { schema: "public" } // Removido para evitar error de linter, 'public' es default
-  })
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  return client
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.error("Faltan variables de entorno de Supabase");
+    throw new Error("Faltan variables de entorno de Supabase");
+  }
+
+  // Crear el cliente usando createBrowserClient de @supabase/ssr
+  client = oryginalCreateBrowserClient(supabaseUrl, supabaseAnonKey);
+  
+  return client;
 }
 
 // Función para verificar si las tablas existen

@@ -1,10 +1,20 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase-server"
+import { cookies } from 'next/headers';
 
 export async function POST(request: Request) {
   try {
-    const supabase = createClient()
+    const cookieStore = cookies();
+    const supabase = createClient(cookieStore);
     const body = await request.json()
+
+    // Obtener el usuario actual
+    const { data: { user } } = await supabase.auth.getUser()
+    
+    // Verificar que el usuario esté autenticado
+    if (!user) {
+      return NextResponse.json({ error: "Usuario no autenticado" }, { status: 401 })
+    }
 
     // Validación básica
     if (!body.nombre) {
@@ -20,7 +30,10 @@ export async function POST(request: Request) {
       precio_unit: body.precio_unit || null,
       stock_min: body.stock_min || 0,
       categoria_id: body.categoria_id || null,
+      user_id: user.id
     }
+
+    console.log("Guardando producto con datos:", productoData)
 
     // Insertar en Supabase
     const { data: producto, error } = await supabase.from("productos").insert(productoData).select()
@@ -36,6 +49,7 @@ export async function POST(request: Request) {
         producto_id: producto[0].id,
         tipo: "costo",
         precio: body.costo_unit,
+        user_id: user.id
       })
 
       if (historyError) {
@@ -50,6 +64,7 @@ export async function POST(request: Request) {
         producto_id: producto[0].id,
         tipo: "venta",
         precio: body.precio_unit,
+        user_id: user.id
       })
 
       if (historyError) {

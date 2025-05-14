@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase-server"
 import { v4 as uuidv4 } from "uuid"
+import { cookies } from 'next/headers'
 
 // Función para descontar stock usando lógica LIFO
 async function descontarStock(supabase: any, prodId: string, qty: number) {
@@ -41,7 +42,8 @@ async function descontarStock(supabase: any, prodId: string, qty: number) {
 
 export async function POST(request: Request) {
   try {
-    const supabase = createClient()
+    const cookieStore = cookies()
+    const supabase = createClient(cookieStore)
     const data = await request.json()
 
     const {
