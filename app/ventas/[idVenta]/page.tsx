@@ -239,7 +239,15 @@ export default function VentaDetallePage() {
                   <ul className="space-y-2 text-sm">
                       {venta.pagos.map((pago, index) => (
                           <li key={index} className="flex justify-between items-center border-b last:border-b-0 pb-1">
-                              <span className="capitalize">{pago.metodo_pago.replace("_", " ")}</span>
+                              <span className="capitalize">
+                                {pago.metodo_pago.replace("_", " ")}
+                                {pago.metodo_pago === "Tarjeta Crédito" && pago.cuotas && pago.cuotas > 1 && (
+                                  <span className="text-muted-foreground ml-2 text-xs">
+                                    ({pago.cuotas} cuotas
+                                    {pago.recargo ? `, recargo ${pago.recargo * 100}%` : ""})
+                                  </span>
+                                )}
+                              </span>
                               <span className="font-medium">{formatCurrency(pago.monto)}</span>
                           </li>
                       ))}

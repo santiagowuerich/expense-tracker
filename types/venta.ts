@@ -29,6 +29,8 @@ export interface VentaItem {
 export interface VentaPago {
   metodo_pago: string;
   monto: number;
+  cuotas?: number;
+  recargo?: number;
 }
 
 export interface CrearVentaParams {

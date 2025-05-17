@@ -44,36 +44,67 @@ export function useCreateVenta() {
   return useMutation({
     mutationFn: async (params: CrearVentaParams) => {
       const supabase = createClient();
-      // Calcular subtotales para cada item (si es necesario aquí, aunque RPC lo recalcula)
-      const itemsWithSubtotal = params.items.map(item => ({
-        ...item,
-        subtotal: item.cantidad * item.precio_unitario
-      }));
-
-      // Asegurarse de que solo se envían pagos con monto > 0
-      const pagosValidos = params.pagos.filter(p => p.monto > 0);
-
-      const rpcParams: any = {
-        _cliente_data: params.cliente,
-        _items: itemsWithSubtotal,
-        _pagos: pagosValidos,
-      };
-
-      if (params.mensajeInterno !== undefined) {
-        rpcParams._mensaje_interno = params.mensajeInterno;
-      }
       
-      // Añadir el mensaje externo a los parámetros RPC
-      if (params.mensajeExterno !== undefined) {
-        rpcParams._mensaje_externo = params.mensajeExterno;
+      try {
+        // ENFOQUE COMPLETAMENTE MANUAL: construir objetos nuevos con solo los campos necesarios
+        
+        // Cliente: incluir solo los campos básicos
+        const clienteData = {
+          nombre: params.cliente.nombre,
+          dni_cuit: params.cliente.dni_cuit,
+          direccion: params.cliente.direccion || null,
+          ciudad: params.cliente.ciudad || null,
+          codigo_postal: params.cliente.codigo_postal || null,
+          telefono: params.cliente.telefono || null,
+          email: params.cliente.email || null
+        };
+        
+        // Items: solo los tres campos requeridos
+        const itemsData = params.items.map(item => ({
+          producto_id: item.producto_id,
+          cantidad: item.cantidad,
+          precio_unitario: item.precio_unitario,
+          subtotal: item.cantidad * item.precio_unitario
+        }));
+        
+        // Pagos: estrictamente solo metodo_pago y monto - sin cuotas ni recargo
+        // Aquí está la solución clave: crear objetos completamente nuevos y simples
+        const pagosData = [];
+        for (const pago of params.pagos) {
+          if (pago.monto > 0) {
+            // Construcción manual con solo los campos permitidos
+            pagosData.push({
+              metodo_pago: pago.metodo_pago,
+              monto: pago.monto
+            });
+          }
+        }
+        
+        // Construir parámetros para la RPC directamente, sin JSON.parse/stringify
+        const rpcParams = {
+          _cliente_data: clienteData,
+          _items: itemsData,
+          _pagos: pagosData,
+          _mensaje_interno: params.mensajeInterno || null,
+          _mensaje_externo: params.mensajeExterno || null
+        };
+        
+        console.log("Enviando RPC realizar_venta con parámetros:", JSON.stringify(rpcParams, null, 2));
+        
+        // Llamar a la función RPC para realizar la venta atomicamente
+        const { data, error } = await supabase
+          .rpc('realizar_venta', rpcParams);
+          
+        if (error) {
+          console.error("Error detallado de RPC:", JSON.stringify(error, null, 2));
+          throw error;
+        }
+        
+        return data as string; // ID de la venta
+      } catch (err) {
+        console.error("Error en try/catch de RPC:", err);
+        throw err;
       }
-
-      // Llamar a la función RPC para realizar la venta atomicamente
-      const { data, error } = await supabase
-        .rpc('realizar_venta', rpcParams);
-
-      if (error) throw error;
-      return data as string; // ID de la venta
     },
     onSuccess: () => {
       // Invalidar consultas para actualizar la UI

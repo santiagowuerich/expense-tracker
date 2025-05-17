@@ -141,7 +141,7 @@ export function usePdfActions(idVenta: string | null) {
 
       const impuestosCalculados = ventaDetalle.total - calculatedSubtotal;
       if (impuestosCalculados !== undefined && Math.abs(impuestosCalculados) >= 0.01) {
-        doc.text("Impuestos:", totalsX - 40, yPos, { align: 'left' });
+        doc.text("Recargo:", totalsX - 40, yPos, { align: 'left' });
         doc.text(formatCurrency(impuestosCalculados), totalsX, yPos, { align: 'right' });
         yPos += 7;
       }
@@ -150,6 +150,93 @@ export function usePdfActions(idVenta: string | null) {
       doc.setFont('helvetica', 'bold');
       doc.text("TOTAL:", totalsX - 40, yPos, { align: 'left' });
       doc.text(formatCurrency(ventaDetalle.total), totalsX, yPos, { align: 'right' });
+      
+      // Añadir sección de formas de pago
+      if (ventaDetalle.pagos && ventaDetalle.pagos.length > 0) {
+        yPos += 15;
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text("Formas de Pago", margin, yPos);
+        yPos += 6;
+        
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        
+        // Variables para mostrar el desglose si hay recargos
+        let totalSinRecargos = ventaDetalle.total;
+        let totalRecargos = 0;
+        
+        for (const pago of ventaDetalle.pagos) {
+          let metodoPago = pago.metodo_pago;
+          let textoAdicional = "";
+          
+          // Mostrar información de cuotas para tarjeta de crédito
+          if (pago.metodo_pago === "Tarjeta Crédito" && pago.cuotas && pago.cuotas > 1) {
+            // Calcular el monto base y el recargo
+            let montoRecargo = 0;
+            let montoSinRecargo = pago.monto;
+            
+            if (pago.recargo && pago.recargo > 0) {
+              // El monto sin recargo es el monto total dividido por (1 + tasa de recargo)
+              montoSinRecargo = pago.monto / (1 + pago.recargo);
+              montoRecargo = pago.monto - montoSinRecargo;
+              
+              // Actualizamos los totales para el desglose
+              totalSinRecargos -= montoRecargo;
+              totalRecargos += montoRecargo;
+              
+              const porcentajeRecargo = Math.round(pago.recargo * 100);
+              textoAdicional = ` en ${pago.cuotas} cuotas`;
+            } else {
+              textoAdicional = ` en ${pago.cuotas} cuotas (sin recargo)`;
+            }
+          }
+          
+          // Formato del texto: "Método de pago: $MONTO" con información adicional según corresponda
+          const textoMetodoPago = `${metodoPago}${textoAdicional}:`;
+          doc.text(textoMetodoPago, margin, yPos);
+          doc.text(formatCurrency(pago.monto), totalsX, yPos, { align: 'right' });
+          yPos += 5;
+          
+          // Si hay recargo, mostrar detalle en la siguiente línea con sangría
+          if (pago.metodo_pago === "Tarjeta Crédito" && pago.cuotas && pago.cuotas > 1 && pago.recargo && pago.recargo > 0) {
+            const porcentajeRecargo = Math.round(pago.recargo * 100);
+            const montoSinRecargo = pago.monto / (1 + pago.recargo);
+            const montoRecargo = pago.monto - montoSinRecargo;
+            
+            doc.setFont('helvetica', 'italic');
+            doc.text(`   Precio contado: ${formatCurrency(montoSinRecargo)}`, margin + 10, yPos);
+            doc.setFont('helvetica', 'normal');
+            yPos += 5;
+            
+            doc.setFont('helvetica', 'italic');
+            doc.text(`   Recargo ${porcentajeRecargo}%: ${formatCurrency(montoRecargo)}`, margin + 10, yPos);
+            doc.setFont('helvetica', 'normal');
+            yPos += 5;
+          }
+        }
+        
+        // Si hubo recargos, mostrar el desglose del total
+        if (totalRecargos > 0) {
+          yPos += 5;
+          doc.setDrawColor(200);
+          doc.line(margin, yPos - 3, pageWidth - margin, yPos - 3);
+          yPos += 5;
+          
+          doc.setFont('helvetica', 'normal');
+          doc.text("Subtotal sin recargos:", totalsX - 60, yPos, { align: 'left' });
+          doc.text(formatCurrency(totalSinRecargos), totalsX, yPos, { align: 'right' });
+          yPos += 5;
+          
+          doc.text("Total recargos financiación:", totalsX - 60, yPos, { align: 'left' });
+          doc.text(formatCurrency(totalRecargos), totalsX, yPos, { align: 'right' });
+          yPos += 5;
+          
+          doc.setFont('helvetica', 'bold');
+          doc.text("TOTAL FINAL:", totalsX - 60, yPos, { align: 'left' });
+          doc.text(formatCurrency(ventaDetalle.total), totalsX, yPos, { align: 'right' });
+        }
+      }
 
       const currentPdfBlob = doc.output('blob');
       const currentPdfUrl = URL.createObjectURL(currentPdfBlob);

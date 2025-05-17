@@ -12,12 +12,21 @@ import { useToast } from "@/components/ui/use-toast";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Trash2, AlertCircle } from "lucide-react";
+import { Loader2, Trash2, AlertCircle, ChevronsUpDown, Check } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import ConfirmationPdfModal from "@/components/confirmation-pdf-modal";
 import { Textarea } from "@/components/ui/textarea";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { cn } from "@/lib/utils";
 
 // Métodos de pago disponibles
 const METODOS_PAGO = [
@@ -47,27 +56,36 @@ const ventaFormSchema = z.object({
       precio_unitario: z.coerce.number().positive(),
     })
   ).min(1, { message: "Agregue al menos un producto" }),
-  // Nuevo campo para los pagos
   pagos: z.array(
     z.object({
       metodo_pago: z.string(),
       monto: z.coerce.number().min(0, { message: "El monto no puede ser negativo" }),
+      cuotas: z.number().int().optional(),
+      recargo: z.number().optional(),
     })
-  ).optional(), // Opcional inicialmente, se valida con refine
+  ).optional(),
   mensajeInterno: z.string().optional(),
   mensajeExterno: z.string().optional(),
 })
 .refine((data) => {
-  // Calcular total de items
-  const totalItems = data.items.reduce((sum, item) => sum + (item.cantidad * item.precio_unitario), 0);
-  // Calcular total pagado
-  const totalPagado = (data.pagos ?? []).reduce((sum, pago) => sum + pago.monto, 0);
+  const totalItemsBase = data.items.reduce((sum, item) => sum + (item.cantidad * item.precio_unitario), 0);
+  
+  const totalRecargosMonetarios = (data.pagos ?? []).reduce((sum, pago) => {
+    if (pago.metodo_pago === "Tarjeta Crédito" && pago.cuotas && pago.cuotas > 1 && pago.recargo && pago.recargo > 0 && pago.monto > 0) {
+      const recargoDelPago = pago.monto - (pago.monto / (1 + pago.recargo));
+      return sum + recargoDelPago;
+    }
+    return sum;
+  }, 0);
+
+  const totalGeneralEsperado = totalItemsBase + totalRecargosMonetarios;
+  const totalEfectivamentePagado = (data.pagos ?? []).reduce((sum, pago) => sum + pago.monto, 0);
   
   // Permitir una pequeña diferencia por redondeo
-  return Math.abs(totalItems - totalPagado) < 0.01;
+  return Math.abs(totalGeneralEsperado - totalEfectivamentePagado) < 0.01;
 }, {
-  message: "La suma de los pagos debe coincidir con el total de la venta.",
-  path: ["pagos"], // Aplicar el error al array de pagos en general
+  message: "La suma de los pagos debe coincidir con el total de la venta (incluyendo recargos).",
+  path: ["pagos"], 
 });
 
 type VentaFormValues = z.infer<typeof ventaFormSchema>;
@@ -77,10 +95,19 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
   const createVenta = useCreateVenta();
   const { data: productos, isLoading: isLoadingProductos } = useProductos();
   const [productosDisponibles, setProductosDisponibles] = useState<any[]>([]);
+  const [productosFiltrados, setProductosFiltrados] = useState<any[]>([]);
+  const [busqueda, setBusqueda] = useState("");
 
   // Estados para el nuevo modal de PDF
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
   const [generatedVentaId, setGeneratedVentaId] = useState<string | number | undefined>(undefined);
+
+  // Estados para manejar cuotas y recargos de tarjeta
+  const [cuotasTarjeta, setCuotasTarjeta] = useState<Record<string, { cuotas: number, recargo: number }>>({});
+  
+  // Estado para manejar los Popovers de selección de producto
+  const [openComboboxes, setOpenComboboxes] = useState<Record<number, boolean>>({});
+
 
   const form = useForm<VentaFormValues>({
     resolver: zodResolver(ventaFormSchema),
@@ -88,11 +115,11 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
       cliente: { 
         nombre: "", 
         dni_cuit: "",
-        direccion: "", // Inicializar explícitamente los opcionales a ""
-        ciudad: "",      // Inicializar explícitamente los opcionales a ""
-        codigo_postal: "",// Inicializar explícitamente los opcionales a ""
-        telefono: "",   // Inicializar explícitamente los opcionales a ""
-        email: "",       // Inicializar explícitamente los opcionales a ""
+        direccion: "", 
+        ciudad: "",      
+        codigo_postal: "",
+        telefono: "",   
+        email: "",       
       },
       items: [{ producto_id: "", cantidad: 1, precio_unitario: 0 }],
       pagos: [],
@@ -111,24 +138,54 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
     control: form.control,
   });
 
-  // Obtener valores actuales del formulario para cálculos
   const currentItems = form.watch("items");
-  const currentPagos = form.watch("pagos") ?? []; // Asegurar que sea un array
+  const currentPagos = form.watch("pagos") ?? []; 
 
-  // --- Cálculos directos (reemplazan useMemo) ---
-  const totalVentaCalculado = currentItems.reduce((sum, item) => {
+  // Total de productos (sin recargos)
+  const totalVentaProductos = currentItems.reduce((sum, item) => {
     const cantidad = Number(item.cantidad) || 0;
     const precio = Number(item.precio_unitario) || 0;
     return sum + cantidad * precio;
   }, 0);
 
+  // Calcular recargos totales aplicados
+  const totalRecargosAplicados = useMemo(() => {
+    return (currentPagos ?? []).reduce((sum, pago) => {
+      if (pago.metodo_pago === "Tarjeta Crédito" && pago.cuotas && pago.cuotas > 1 && pago.recargo && pago.recargo > 0 && pago.monto > 0) {
+        const recargoDelPago = pago.monto - (pago.monto / (1 + pago.recargo));
+        return sum + recargoDelPago;
+      }
+      return sum;
+    }, 0);
+  }, [currentPagos]);
+  
+  // Calcular el total pagado (suma de todos los pagos)
   const totalPagadoCalculado = currentPagos.reduce((sum, pago) => {
     return sum + (Number(pago.monto) || 0);
   }, 0);
+  
+  // Total final de la venta a mostrar en UI (productos + recargos)
+  // Para evitar inconsistencias, si hay pagos con tarjeta de crédito en cuotas,
+  // usamos el totalPagadoCalculado como fuente única de verdad.
+  const totalVentaFinalUI = useMemo(() => {
+    // Si hay al menos un pago con tarjeta de crédito
+    const hayPagoTarjetaCredito = currentPagos.some(pago => 
+      pago.metodo_pago === "Tarjeta Crédito"
+    );
+    
+    // Si hay tarjeta de crédito Y el total pagado es diferente al total de productos
+    // (lo que indica que hay un recargo aplicado)
+    if (hayPagoTarjetaCredito && Math.abs(totalPagadoCalculado - totalVentaProductos) > 0.01) {
+      return totalPagadoCalculado;
+    }
+    
+    // En cualquier otro caso, mantenemos el total de productos
+    return totalVentaProductos;
+  }, [totalVentaProductos, totalPagadoCalculado, currentPagos]);
 
-  const montoRestante = totalVentaCalculado - totalPagadoCalculado;
+  // Monto restante basado en el total final con recargos
+  const montoRestante = totalVentaFinalUI - totalPagadoCalculado;
 
-  // --- Cargar Productos --- 
   useEffect(() => {
     if (productos) {
       const prods = (productos as any[])
@@ -136,15 +193,38 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
         .map((p) => ({
           id: p.id,
           nombre: p.nombre,
-          precio: p.precio_unit || 0, // Usar precio_unit de la tabla productos
+          precio: p.precio_unit || 0, 
           stock: p.stock,
         }));
       setProductosDisponibles(prods);
+      setProductosFiltrados(prods); 
     }
   }, [productos]);
 
-  // Estado para rastrear si un monto fue modificado manualmente por el usuario
-  // Las claves serán los labels de METODOS_PAGO (ej. "Efectivo", "Tarjeta Débito")
+  const filtrarProductos = (textoBusqueda: string) => {
+    setBusqueda(textoBusqueda);
+    if (!textoBusqueda.trim()) {
+      setProductosFiltrados(productosDisponibles);
+      return;
+    }
+    
+    const textoNormalizado = textoBusqueda.toLowerCase().trim();
+    const filtrados = productosDisponibles.filter(producto => 
+      producto.nombre.toLowerCase().includes(textoNormalizado)
+    );
+    setProductosFiltrados(filtrados);
+  };
+  
+  const handleComboboxOpenChange = (index: number, isOpen: boolean) => {
+    setOpenComboboxes(prev => ({ ...prev, [index]: isOpen }));
+    if (!isOpen) {
+      // Reset search when a combobox is closed
+      // We keep the current filter if user just clicks outside
+      // filtrarProductos(""); 
+    }
+  };
+
+
   const [manualOverride, setManualOverride] = useState<Record<string, boolean>>(
     METODOS_PAGO.reduce((acc, methodLabel) => {
       acc[methodLabel] = false;
@@ -152,73 +232,95 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
     }, {} as Record<string, boolean>)
   );
 
-  // Efecto para recalcular montos automáticamente
   useEffect(() => {
     const activePagos = (form.getValues("pagos") || []).filter(p => p !== undefined && p !== null);
-    const currentTotalVenta = currentItems.reduce((sum, item) => sum + (Number(item.cantidad) || 0) * (Number(item.precio_unitario) || 0), 0);
+    // Usar totalVentaProductos (sin recargos) para la lógica de auto-asignación
+    const currentTotalProductos = totalVentaProductos;
 
 
+    const indexTarjetaCredito = activePagos.findIndex(p => p.metodo_pago === "Tarjeta Crédito");
+    if (indexTarjetaCredito !== -1 && cuotasTarjeta["Tarjeta Crédito"] && cuotasTarjeta["Tarjeta Crédito"].recargo > 0) {
+      const recargo = cuotasTarjeta["Tarjeta Crédito"].recargo;
+      if (activePagos.length === 1 && !manualOverride["Tarjeta Crédito"]) {
+        const montoConRecargo = currentTotalProductos * (1 + recargo); // Base es total productos
+        const indexToUpdate = (form.getValues("pagos") || []).findIndex(p => p?.metodo_pago === "Tarjeta Crédito");
+        if (indexToUpdate !== -1) {
+          form.setValue(`pagos.${indexToUpdate}.monto`, parseFloat(montoConRecargo.toFixed(2)), { shouldValidate: true, shouldDirty: true });
+        }
+        return; 
+      }
+    }
+    
     if (activePagos.length === 1) {
       const pagoActual = activePagos[0];
       const metodo = pagoActual.metodo_pago;
       const indexToUpdate = (form.getValues("pagos") || []).findIndex(p => p?.metodo_pago === metodo);
 
       if (indexToUpdate !== -1 && !manualOverride[metodo]) {
-        if (form.getValues(`pagos.${indexToUpdate}.monto`) !== currentTotalVenta) {
-          form.setValue(`pagos.${indexToUpdate}.monto`, currentTotalVenta, { shouldValidate: true, shouldDirty: true });
+        if (metodo === "Tarjeta Crédito" && cuotasTarjeta[metodo] && cuotasTarjeta[metodo].recargo > 0) {
+          const montoConRecargo = currentTotalProductos * (1 + cuotasTarjeta[metodo].recargo); // Base es total productos
+          form.setValue(`pagos.${indexToUpdate}.monto`, parseFloat(montoConRecargo.toFixed(2)), { shouldValidate: true, shouldDirty: true });
+        } else if (form.getValues(`pagos.${indexToUpdate}.monto`) !== currentTotalProductos) {
+          form.setValue(`pagos.${indexToUpdate}.monto`, parseFloat(currentTotalProductos.toFixed(2)), { shouldValidate: true, shouldDirty: true });
         }
       }
     } else if (activePagos.length === 2) {
-      const amountPerMethod = currentTotalVenta / 2;
+      const amountPerMethod = currentTotalProductos / 2; // Base es total productos
       activePagos.forEach((pagoActual) => {
         const metodo = pagoActual.metodo_pago;
         const indexToUpdate = (form.getValues("pagos") || []).findIndex(p => p?.metodo_pago === metodo);
 
         if (indexToUpdate !== -1 && !manualOverride[metodo]) {
-          if (form.getValues(`pagos.${indexToUpdate}.monto`) !== amountPerMethod) {
-            form.setValue(`pagos.${indexToUpdate}.monto`, amountPerMethod, { shouldValidate: true, shouldDirty: true });
+          if (metodo === "Tarjeta Crédito" && cuotasTarjeta[metodo] && cuotasTarjeta[metodo].recargo > 0) {
+            const montoConRecargo = amountPerMethod * (1 + cuotasTarjeta[metodo].recargo);
+            form.setValue(`pagos.${indexToUpdate}.monto`, parseFloat(montoConRecargo.toFixed(2)), { shouldValidate: true, shouldDirty: true });
+          } else if (form.getValues(`pagos.${indexToUpdate}.monto`) !== amountPerMethod) {
+            form.setValue(`pagos.${indexToUpdate}.monto`, parseFloat(amountPerMethod.toFixed(2)), { shouldValidate: true, shouldDirty: true });
           }
         }
       });
     }
-    // Si hay 0, 3 o más métodos seleccionados, no se auto-asigna ningún monto.
-    // Los montos se ingresan manualmente o permanecen en 0 si es un nuevo método.
-    // Al deseleccionar, el monto se pone a 0 (o el item se remueve) y el override se resetea.
-  }, [form.watch("pagos"), totalVentaCalculado, manualOverride, form, currentItems]);
+  }, [form.watch("pagos"), totalVentaProductos, manualOverride, form, currentItems, cuotasTarjeta]); // Depender de totalVentaProductos
 
-  // --- Manejo de Selección de Pagos MODIFICADO ---
   const handleMetodoPagoChange = (metodo: string, checked: boolean | string) => {
-    // Asegurarse que 'checked' es un booleano
     const isChecked = typeof checked === 'boolean' ? checked : checked === 'true';
     const currentPagosArray = form.getValues("pagos") || [];
     const index = currentPagosArray.findIndex((field: any) => field.metodo_pago === metodo);
 
     if (isChecked && index === -1) {
-      // Agregar método si no existe
-      appendPago({ metodo_pago: metodo, monto: 0 }); 
-      // El useEffect se encargará de la auto-asignación si aplica
+      if (metodo === "Tarjeta Crédito") {
+        appendPago({ 
+          metodo_pago: metodo, 
+          monto: 0, 
+          cuotas: 1, 
+          recargo: 0 
+        });
+        setCuotasTarjeta({...cuotasTarjeta, [metodo]: { cuotas: 1, recargo: 0 }});
+      } else {
+        appendPago({ metodo_pago: metodo, monto: 0 });
+      }
     } else if (!isChecked && index !== -1) {
-      // Remover método si existe
       removePago(index);
-      // Resetear el override manual para este método
       setManualOverride(prev => ({ ...prev, [metodo]: false }));
+      if (metodo === "Tarjeta Crédito") {
+        const newCuotasTarjeta = {...cuotasTarjeta};
+        delete newCuotasTarjeta[metodo];
+        setCuotasTarjeta(newCuotasTarjeta);
+      }
     }
   };
 
-  // --- Funciones Auxiliares (Refinar onChange para robustez) --- 
   const actualizarPrecioPorProducto = (index: number, productoId: string) => {
     const producto = productosDisponibles.find((p) => p.id === productoId);
     if (producto) {
-      // Usar setValue para asegurar la actualización inmediata del estado del form
       form.setValue(`items.${index}.precio_unitario`, producto.precio, { shouldValidate: true });
     }
   };
 
   const handleCantidadChange = (index: number, valueString: string) => {
-    const cantidad = parseInt(valueString) || 0; // Convertir a número, default a 0 si es inválido
+    const cantidad = parseInt(valueString) || 0; 
     form.setValue(`items.${index}.cantidad`, cantidad, { shouldValidate: true });
 
-    // Validar stock inmediatamente después de actualizar el valor
     const productoId = form.getValues(`items.${index}.producto_id`);
     if (productoId) {
       const producto = productosDisponibles.find(p => p.id === productoId);
@@ -234,49 +336,123 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
   };
   
   const handlePrecioChange = (index: number, valueString: string) => {
-      const precio = parseFloat(valueString) || 0; // Convertir a número float
+      const precio = parseFloat(valueString) || 0; 
       form.setValue(`items.${index}.precio_unitario`, precio, { shouldValidate: true });
   };
 
-  // Mover esta función aquí para que esté disponible en onSubmit
   const verificarStockDisponible = (productoId: string, cantidad: number): boolean => {
     const producto = productosDisponibles.find((p) => p.id === productoId);
     return producto ? producto.stock >= cantidad : false;
   };
 
-  // --- Manejo de Cambio de Monto en Pagos MODIFICADO ---
-  const handlePagoMontoChange = (index: number, valueString: string) => {
-    const monto = parseFloat(valueString); // No default a 0 aquí, permitir NaN para validación
+  const handleCuotasChange = (metodo: string, opcionCuotas: number) => {
+    let recargo = 0;
+    let cuotas = 1;
     
-    // Permitir que el campo quede vacío temporalmente o sea inválido para que Zod lo maneje
-    if (isNaN(monto) && valueString.trim() !== "" && valueString.trim() !== "-") {
-        form.setValue(`pagos.${index}.monto`, 0 / 0, { shouldValidate: true, shouldDirty: true }); // Set to NaN
-    } else {
-        form.setValue(`pagos.${index}.monto`, isNaN(monto) ? 0 : monto, { shouldValidate: true, shouldDirty: true });
+    if (opcionCuotas === 3) {
+      recargo = 0.2; 
+      cuotas = 3;
+    } else if (opcionCuotas === 6) {
+      recargo = 0.3; 
+      cuotas = 6;
     }
+    
+    setCuotasTarjeta({...cuotasTarjeta, [metodo]: { cuotas, recargo }});
+    
+    const pagosArray = form.getValues("pagos") || [];
+    const index = pagosArray.findIndex((pago: any) => pago.metodo_pago === metodo);
+    
+    if (index !== -1) {
+      // Usar totalVentaProductos (sin recargos) como base para el cálculo del recargo
+      let montoBaseParaRecargo = totalVentaProductos; 
+      
+      // Si hay más de una forma de pago y este pago de tarjeta ya tiene un monto (posiblemente manual)
+      // recalculamos el monto base original de ESE PAGO antes de este nuevo recargo.
+      if (pagosArray.length > 1 && manualOverride[metodo] && pagosArray[index].monto > 0) {
+         const pagoActual = pagosArray[index];
+         const recargoAnterior = pagoActual.recargo || 0; // Usar el recargo guardado en el pago
+         montoBaseParaRecargo = pagoActual.monto / (1 + recargoAnterior);
+      } else if (pagosArray.length > 1 && !manualOverride[metodo]) {
+        // Si hay múltiples formas de pago y no hay override, dividir el total de productos
+        // PERO esto es complejo, mejor dejar que el useEffect de auto-asignación maneje la división.
+        // Aquí, si se cambian las cuotas de una tarjeta, y hay otros pagos,
+        // la base para el recargo de ESTA tarjeta debería ser su porción del total de productos.
+        // O más simple: si el monto ya está seteado, usarlo para recalcular.
+        // Si el monto es 0 (recién agregado), el useEffect se encargará.
+        // Por ahora, para simplificar, si es más de 1 pago, el monto base es el monto actual de la tarjeta sin su recargo.
+        // Esto asume que el usuario primero ajusta el monto de la tarjeta si quiere que sea parcial.
+        const pagoActual = pagosArray[index];
+        const recargoAnterior = pagoActual.recargo || 0;
+        if (pagoActual.monto > 0) {
+             montoBaseParaRecargo = pagoActual.monto / (1 + recargoAnterior);
+        } else {
+            // Si el monto es 0, y hay varios pagos, es difícil saber la base.
+            // Podríamos tomar totalVentaProductos / num_pagos_activos_con_monto_cero_o_tarjeta.
+            // Dejemos que el useEffect que distribuye lo haga, y si el usuario cambia cuotas de un pago con 0,
+            // el monto seguirá 0 hasta que el useEffect o el usuario lo cambie.
+            // Si el monto es 0 y es el único pago, montoBaseParaRecargo es totalVentaProductos.
+             if (activePagos.length === 1) {
+                montoBaseParaRecargo = totalVentaProductos;
+             } else {
+                // No cambiar el monto si es 0 y hay otros pagos, dejar que el useEffect actúe.
+                // Solo actualizar cuotas y tasa de recargo.
+                form.setValue(`pagos.${index}.cuotas`, cuotas, { shouldValidate: true });
+                form.setValue(`pagos.${index}.recargo`, recargo, { shouldValidate: true });
+                // No se setea el monto aquí si es 0 y hay otros pagos.
+                // El useEffect debería recalcular la distribución si este es un nuevo pago.
+                // Si es un pago existente con monto > 0, montoBaseParaRecargo ya está bien.
+                if (pagoActual.monto === 0) return; // Salir si monto es 0 y hay otros pagos
+             }
+        }
+      } else if (activePagos.length === 1) { 
+         montoBaseParaRecargo = totalVentaProductos;
+      }
+      // Else, montoBaseParaRecargo es totalVentaProductos (por defecto si es el único pago o si algo falló arriba)
 
+      const nuevoMontoConRecargo = montoBaseParaRecargo * (1 + recargo);
+      
+      form.setValue(`pagos.${index}.cuotas`, cuotas, { shouldValidate: true });
+      form.setValue(`pagos.${index}.recargo`, recargo, { shouldValidate: true });
+      form.setValue(`pagos.${index}.monto`, parseFloat(nuevoMontoConRecargo.toFixed(2)), { shouldValidate: true });
+      
+      // Forzar re-evaluación de watchers y validaciones que dependen de "pagos"
+      form.trigger("pagos"); 
+    }
+  };
+
+  const handlePagoMontoChange = (index: number, valueString: string) => {
+    const monto = parseFloat(valueString); 
     const metodoDelPago = form.getValues(`pagos.${index}.metodo_pago`);
-    if (metodoDelPago) {
-      // Marcar override manual solo si el valor es un número válido o string vacío (para permitir borrar)
-      // Si es un string inválido (ej. "abc"), no necesariamente es un override intencional del *valor*
-      if (!isNaN(monto) || valueString.trim() === "") {
-        setManualOverride(prev => ({ ...prev, [metodoDelPago]: true }));
+    
+    if (!isNaN(monto)) {
+      setManualOverride(prev => ({ ...prev, [metodoDelPago]: true }));
+      
+      if (metodoDelPago === "Tarjeta Crédito" && cuotasTarjeta[metodoDelPago]?.recargo > 0) {
+        form.setValue(`pagos.${index}.monto`, monto, { shouldValidate: true });
+      } else {
+        form.setValue(`pagos.${index}.monto`, monto, { shouldValidate: true });
       }
     }
   };
 
-  // --- Submit --- 
   const onSubmit = async (values: VentaFormValues) => {
-      // Re-validar suma de pagos aquí por si acaso
-      const totalItems = values.items.reduce((sum, item) => sum + (item.cantidad * item.precio_unitario), 0);
-      const totalPagado = (values.pagos ?? []).reduce((sum, pago) => sum + pago.monto, 0);
-      if (Math.abs(totalItems - totalPagado) >= 0.01) {
-          toast({ title: "Error de Validación", description: "La suma de los pagos no coincide con el total.", variant: "destructive" });
-          form.setError("pagos", { type: "manual", message: "La suma de los pagos debe coincidir con el total." });
+      const totalItemsBase = values.items.reduce((sum, item) => sum + (item.cantidad * item.precio_unitario), 0);
+      const totalRecargosMonetariosSubmit = (values.pagos ?? []).reduce((sum, pago) => {
+        if (pago.metodo_pago === "Tarjeta Crédito" && pago.cuotas && pago.cuotas > 1 && pago.recargo && pago.recargo > 0 && pago.monto > 0) {
+          const recargoDelPago = pago.monto - (pago.monto / (1 + pago.recargo));
+          return sum + recargoDelPago;
+        }
+        return sum;
+      }, 0);
+      const totalGeneralEsperadoSubmit = totalItemsBase + totalRecargosMonetariosSubmit;
+      
+      // La validación de Zod ya cubre esto, pero una doble verificación no hace daño.
+      const totalPagadoSubmit = (values.pagos ?? []).reduce((sum, pago) => sum + pago.monto, 0);
+      if (Math.abs(totalGeneralEsperadoSubmit - totalPagadoSubmit) >= 0.01) {
+          toast({ title: "Error de Validación", description: "La suma de los pagos no coincide con el total final (productos + recargos).", variant: "destructive" });
           return;
       }
       
-      // Verificar stock antes de enviar
       for (const item of values.items) {
         if (!verificarStockDisponible(item.producto_id, item.cantidad)) {
           const producto = productosDisponibles.find((p) => p.id === item.producto_id);
@@ -286,27 +462,51 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
       }
 
     try {
-      // Filtrar pagos con monto 0 antes de enviar
-      const pagosParaEnviar = (values.pagos ?? []).filter(p => p.monto > 0);
+      // Enfoque radical para asegurar que no se envíen campos problemáticos
       
-      // LLAMAR A LA MUTACIÓN Y OBTENER EL ID DE VENTA
-      const ventaId = await createVenta.mutateAsync({
-          cliente: values.cliente,
-          items: values.items,
-          pagos: pagosParaEnviar,
-          mensajeInterno: values.mensajeInterno,
-          mensajeExterno: values.mensajeExterno,
-      });
+      // 1. Para los pagos, solo incluir metodo_pago y monto
+      const pagosMinimos = (values.pagos ?? [])
+        .filter(p => p.monto > 0)
+        .map(pago => ({
+          metodo_pago: pago.metodo_pago,
+          monto: pago.monto
+          // NO incluir cuotas ni recargo
+        }));
       
-      // ABRIR EL MODAL DE CONFIRMACIÓN Y PDF
-      setGeneratedVentaId(ventaId); // Guardar el ID de la venta generada
-      setIsPdfModalOpen(true); // Abrir el modal de PDF
+      // 2. Objeto completo para enviar
+      const ventaDataToSend = {
+        cliente: values.cliente,
+        items: values.items,
+        pagos: pagosMinimos,  // Solo con campos metodo_pago y monto
+        mensajeInterno: values.mensajeInterno || "",
+        mensajeExterno: values.mensajeExterno || ""
+      };
       
-      // El toast de "Venta realizada" se puede mover al modal de PDF o al onPdfGenerated
+      console.log("Datos enviados a realizar_venta:", JSON.stringify(ventaDataToSend, null, 2));
+      
+      const ventaId = await createVenta.mutateAsync(ventaDataToSend); 
+      
+      setGeneratedVentaId(ventaId); 
+      setIsPdfModalOpen(true); 
       
     } catch (error: any) {
-      console.error("Error RPC:", error); // Log detallado
-      toast({ title: "Error al realizar la venta", description: error.message || "Hubo un problema.", variant: "destructive" });
+      console.error("Error RPC completo:", error); // Log más detallado del error
+      // Intentar extraer un mensaje más útil del error si es posible
+      let errorMessage = "Hubo un problema al procesar la venta.";
+      if (error && error.message) {
+        // El error de Supabase a veces viene como un string JSON en error.message
+        try {
+          const parsedError = JSON.parse(error.message);
+          if (parsedError && parsedError.message) {
+            errorMessage = parsedError.message;
+          } else {
+            errorMessage = error.message; // Usar el mensaje original si el parseo no ayuda
+          }
+        } catch (e) {
+          errorMessage = error.message; // Si no es JSON, usar el mensaje tal cual
+        }
+      }
+      toast({ title: "Error al realizar la venta", description: errorMessage, variant: "destructive" });
     }
   };
 
@@ -315,18 +515,17 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
   };
 
   const handlePdfModalClosed = () => {
-    // Esta función se llama cuando el modal de PDF se cierra
     toast({ title: "Proceso de Venta Finalizado", description: "La venta se registró y el PDF se procesó." });
-    
-    // Primero, resetear el formulario para limpiar los datos.
     form.reset(); 
-    
-    // Luego, limpiar el ID de venta generado.
     setGeneratedVentaId(undefined); 
-    
-    // Finalmente, llamar a onSuccess para cerrar el VentaForm (o notificar al padre).
+    setCuotasTarjeta({});
+    setManualOverride(METODOS_PAGO.reduce((acc, methodLabel) => ({...acc, [methodLabel]: false}), {}));
+    filtrarProductos(""); // Reset product search
     onSuccess(); 
   };
+  
+  const activePagos = form.watch("pagos") || [];
+
 
   // --- Renderizado --- 
   return (
@@ -334,7 +533,7 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
           
-          {/* Sección Cliente (sin cambios) */}
+          {/* Sección Cliente */}
           <div>
             <h3 className="text-lg font-medium mb-4">Datos del Cliente</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -440,12 +639,13 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
 
           <Separator className="my-4" />
 
-          {/* Sección Productos (sin cambios estructurales, solo usa itemFields) */}
+          {/* Sección Productos con ComboBox */}
           <div>
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-medium">Productos</h3>
               <Button type="button" onClick={agregarProducto} variant="outline" size="sm">Agregar Producto</Button>
             </div>
+
             {isLoadingProductos ? (
                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             ) : productosDisponibles.length === 0 ? (
@@ -455,37 +655,74 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
                 {itemFields.map((field, index) => (
                   <Card key={field.id} className="relative">
                     <CardContent className="pt-4">
-                      <div className="grid grid-cols-12 gap-4">
+                      <div className="grid grid-cols-12 gap-4 items-end">
                         <div className="col-span-12 md:col-span-5">
                           <FormField
                             control={form.control}
                             name={`items.${index}.producto_id`}
                             render={({ field: selectField }) => (
-                              <FormItem>
+                              <FormItem className="flex flex-col">
                                 <FormLabel>Producto *</FormLabel>
-                                <Select
-                                  value={selectField.value || ""}
-                                  onValueChange={(value) => {
-                                    selectField.onChange(value);
-                                    actualizarPrecioPorProducto(index, value);
-                                  }}
-                                >
-                                  <FormControl>
-                                    <SelectTrigger>
-                                      <SelectValue placeholder="Seleccionar producto" />
-                                    </SelectTrigger>
-                                  </FormControl>
-                                  <SelectContent>
-                                    {productosDisponibles.map((producto) => (
-                                      <SelectItem key={producto.id} value={producto.id}>
-                                        {producto.nombre}{" "}
-                                        <span className="ml-2 text-muted-foreground">
-                                          (Stock: {producto.stock})
-                                        </span>
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
+                                <Popover open={openComboboxes[index] || false} onOpenChange={(isOpen) => handleComboboxOpenChange(index, isOpen)}>
+                                  <PopoverTrigger asChild>
+                                    <FormControl>
+                                      <Button
+                                        variant="outline"
+                                        role="combobox"
+                                        className={cn(
+                                          "w-full justify-between",
+                                          !selectField.value && "text-muted-foreground"
+                                        )}
+                                      >
+                                        {selectField.value
+                                          ? productosDisponibles.find(
+                                              (producto) => producto.id === selectField.value
+                                            )?.nombre
+                                          : "Seleccionar producto"}
+                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                      </Button>
+                                    </FormControl>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                                    <Command filter={() => 1}>
+                                      <CommandInput 
+                                        placeholder="Buscar producto..." 
+                                        value={busqueda} 
+                                        onValueChange={filtrarProductos}
+                                      />
+                                      <CommandList>
+                                        <CommandEmpty>No se encontró el producto.</CommandEmpty>
+                                        <CommandGroup>
+                                          {productosFiltrados.map((producto) => (
+                                            <CommandItem
+                                              value={producto.id}
+                                              key={producto.id}
+                                              onSelect={(currentValue) => {
+                                                form.setValue(`items.${index}.producto_id`, currentValue);
+                                                actualizarPrecioPorProducto(index, currentValue);
+                                                setOpenComboboxes(prev => ({ ...prev, [index]: false }));
+                                                filtrarProductos(""); // Limpiar búsqueda después de seleccionar
+                                              }}
+                                            >
+                                              <Check
+                                                className={cn(
+                                                  "mr-2 h-4 w-4",
+                                                  producto.id === selectField.value
+                                                    ? "opacity-100"
+                                                    : "opacity-0"
+                                                )}
+                                              />
+                                              {producto.nombre}
+                                              <span className="ml-2 text-xs text-muted-foreground">
+                                                (Stock: {producto.stock})
+                                              </span>
+                                            </CommandItem>
+                                          ))}
+                                        </CommandGroup>
+                                      </CommandList>
+                                    </Command>
+                                  </PopoverContent>
+                                </Popover>
                                 <FormMessage />
                               </FormItem>
                             )}
@@ -569,7 +806,7 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
               <div className="flex justify-end mt-4">
                 <div className="text-right">
                   <p className="text-sm font-medium">Total de la venta:</p>
-                  <p className="text-2xl font-bold">${totalVentaCalculado.toFixed(2)}</p>
+                  <p className="text-2xl font-bold">${totalVentaFinalUI.toFixed(2)}</p>
                 </div>
               </div>
             )}
@@ -590,7 +827,7 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
                       placeholder="Anotaciones para esta venta, detalles de entrega, etc."
                       className="resize-none"
                       {...field}
-                      value={field.value || ''} // Para asegurar que sea controlado
+                      value={field.value || ''} 
                     />
                   </FormControl>
                   <FormDescription>
@@ -635,7 +872,7 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
                 <FormField
                   key={metodo}
                   control={form.control}
-                  name={`_control_pago_${metodo}` as any}
+                  name={`_control_pago_${metodo}` as any} 
                   render={() => (
                     <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 shadow-sm">
                       <FormControl>
@@ -656,35 +893,89 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
               <div className="space-y-4 mt-4 border p-4 rounded-md">
                 <h4 className="font-medium">Ingresar Montos</h4>
                 {pagoFields.map((field, index) => (
-                  <FormField
-                    key={field.id}
-                    control={form.control}
-                    name={`pagos.${index}.monto`}
-                    render={({ field: montoField }) => (
-                      <FormItem className="flex items-center gap-4">
-                        <FormLabel className="w-32 shrink-0">{field.metodo_pago}:</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            placeholder="0.00"
-                            {...montoField}
-                            value={montoField.value || 0}
-                            onChange={(e) => handlePagoMontoChange(index, e.target.value)}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
+                  <div key={field.id} className="space-y-4">
+                    <FormField
+                      control={form.control}
+                      name={`pagos.${index}.monto`}
+                      render={({ field: montoField }) => (
+                        <FormItem className="flex items-center gap-4">
+                          <FormLabel className="w-32 shrink-0">{field.metodo_pago}:</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              placeholder="0.00"
+                              {...montoField}
+                              value={montoField.value || 0}
+                              onChange={(e) => handlePagoMontoChange(index, e.target.value)}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    
+                    {field.metodo_pago === "Tarjeta Crédito" && (
+                      <div className="ml-32 space-y-2 border-l-2 pl-4 border-primary/20">
+                        <h5 className="text-sm font-medium">Opciones de Cuotas (Tarjeta de Crédito)</h5>
+                        <div className="space-y-2">
+                          <div className="flex items-center space-x-2">
+                            <input 
+                              type="radio" 
+                              id={`contado-${index}`} 
+                              name={`cuotasOpcion-${field.id}`} // Unique name per payment item for radio group
+                              checked={!cuotasTarjeta[field.metodo_pago] || cuotasTarjeta[field.metodo_pago].cuotas === 1}
+                              onChange={() => handleCuotasChange(field.metodo_pago, 1)}
+                              className="h-4 w-4 rounded-full"
+                            />
+                            <label htmlFor={`contado-${index}`} className="text-sm">
+                              Contado (Sin recargo)
+                            </label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <input 
+                              type="radio" 
+                              id={`tres-cuotas-${index}`} 
+                              name={`cuotasOpcion-${field.id}`} // Unique name
+                              checked={cuotasTarjeta[field.metodo_pago]?.cuotas === 3}
+                              onChange={() => handleCuotasChange(field.metodo_pago, 3)}
+                              className="h-4 w-4 rounded-full"
+                            />
+                            <label htmlFor={`tres-cuotas-${index}`} className="text-sm">
+                              3 Cuotas (20% recargo)
+                            </label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <input 
+                              type="radio" 
+                              id={`seis-cuotas-${index}`} 
+                              name={`cuotasOpcion-${field.id}`} // Unique name
+                              checked={cuotasTarjeta[field.metodo_pago]?.cuotas === 6}
+                              onChange={() => handleCuotasChange(field.metodo_pago, 6)}
+                              className="h-4 w-4 rounded-full"
+                            />
+                            <label htmlFor={`seis-cuotas-${index}`} className="text-sm">
+                              6 Cuotas (30% recargo)
+                            </label>
+                          </div>
+                          
+                          {cuotasTarjeta[field.metodo_pago]?.recargo > 0 && (
+                            <div className="text-sm text-muted-foreground mt-2">
+                              Recargo: {cuotasTarjeta[field.metodo_pago]?.recargo * 100}% 
+                              (${((form.getValues(`pagos.${index}.monto`) || 0) / (1 + (cuotasTarjeta[field.metodo_pago]?.recargo || 0))) * (cuotasTarjeta[field.metodo_pago]?.recargo || 0) })
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     )}
-                  />
+                  </div>
                 ))}
               </div>
             )}
 
             {/* Resumen de Pagos y Total */}
             <div className="mt-6 flex justify-end items-center gap-6 border-t pt-4">
-               {/* Mostrar error de validación general de pagos si existe */}
                {form.formState.errors.pagos?.message && (
                  <div className="text-sm text-destructive flex items-center gap-1 mr-auto">
                     <AlertCircle className="h-4 w-4"/>
@@ -699,19 +990,29 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
                   </p>
                </div>
                <div className="text-right">
-                  <p className="text-sm font-medium">Total Venta:</p>
-                  <p className="text-lg font-semibold">${totalVentaCalculado.toFixed(2)}</p>
+                  <p className="text-sm font-medium">Subtotal Productos:</p>
+                  <p className="text-lg font-semibold">${totalVentaProductos.toFixed(2)}</p>
+               </div>
+                {totalRecargosAplicados > 0 && (
+                    <div className="text-right">
+                        <p className="text-sm font-medium">Recargos:</p>
+                        <p className="text-lg font-semibold">${totalRecargosAplicados.toFixed(2)}</p>
+                    </div>
+                )}
+               <div className="text-right">
+                  <p className="text-sm font-medium">Total Final:</p>
+                  <p className="text-lg font-semibold">${totalVentaFinalUI.toFixed(2)}</p>
                </div>
                <div className="text-right">
                   <p className="text-sm font-medium">Restante:</p>
-                  <p className={`text-lg font-bold ${montoRestante !== 0 ? 'text-red-600' : 'text-green-600'}`}>
+                  {/* Usar una pequeña tolerancia para la comparación con cero debido a problemas de punto flotante */}
+                  <p className={`text-lg font-bold ${Math.abs(montoRestante) > 0.001 ? 'text-red-600' : 'text-green-600'}`}> 
                      ${montoRestante.toFixed(2)}
                   </p>
                </div>
             </div>
           </div>
           
-          {/* Botones de Acción (sin cambios estructurales) */}
           <div className="flex justify-end space-x-2 pt-4">
             <Button type="button" variant="outline" onClick={onSuccess}>Cancelar</Button>
             <Button 
@@ -725,7 +1026,6 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
         </form>
       </Form>
 
-      {/* RENDERIZAR EL MODAL DE CONFIRMACIÓN Y PDF */}
       <ConfirmationPdfModal 
           open={isPdfModalOpen} 
           onOpenChange={setIsPdfModalOpen} 
