@@ -15,14 +15,15 @@ import {
 } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Eye } from "lucide-react"
+import { Eye, PackageSearch, ShoppingCart, TrendingUp, History } from "lucide-react"
 import { createClient } from "@/lib/supabase-browser"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/components/ui/use-toast"
 import PaymentDetailsDialog from "./payment-details-dialog"
-import PurchaseDetailsDialog from "./purchase-details-dialog"
 import type React from "react"
+import { useMovimientosStockQuery } from "@/lib/queries"
+import type { MovimientoStock, ProductoInventario } from "@/types/inventario.types"
 
 type ProductPurchase = {
   id: string
@@ -40,11 +41,28 @@ type PriceHistory = {
   compra_id: string | null
 }
 
+interface ProductInfo extends ProductoInventario {
+  // Puedes añadir más campos específicos si es necesario
+}
+
 interface ProductPurchasesDialogProps {
   productoId: string
   productoNombre: string
   children?: React.ReactNode
 }
+
+const formatTipoMovimiento = (tipo: MovimientoStock['tipo_movimiento']): string => {
+  const map: Record<MovimientoStock['tipo_movimiento'], string> = {
+    stock_inicial: "Stock Inicial",
+    entrada_compra: "Entrada por Compra",
+    salida_venta: "Salida por Venta",
+    ajuste_manual_positivo: "Ajuste Manual (+)",
+    ajuste_manual_negativo: "Ajuste Manual (-)",
+    devolucion_cliente: "Devolución de Cliente",
+    perdida_rotura: "Pérdida/Rotura",
+  };
+  return map[tipo] || tipo;
+};
 
 export default function ProductPurchasesDialog({ productoId, productoNombre, children }: ProductPurchasesDialogProps) {
   const [open, setOpen] = useState(false)
@@ -168,6 +186,13 @@ export default function ProductPurchasesDialog({ productoId, productoNombre, chi
     enabled: open,
   })
 
+  const {
+    data: movimientosStock,
+    isLoading: isLoadingMovimientosStock,
+    error: errorMovimientosStock,
+    refetch: refetchMovimientosStock,
+  } = useMovimientosStockQuery(productoId, open)
+
   return (
     <Dialog
       open={open}
@@ -176,37 +201,39 @@ export default function ProductPurchasesDialog({ productoId, productoNombre, chi
         if (newOpen) {
           refetchCompras()
           refetchHistorial()
+          refetchMovimientosStock()
         }
       }}
     >
       <DialogTrigger asChild>
         {children ? children : (
-          <Button variant="ghost" size="icon">
+          <Button variant="ghost" size="icon" title={`Detalles de ${productoNombre}`}>
             <Eye className="h-4 w-4" />
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[700px]">
+      <DialogContent className="sm:max-w-[800px] md:max-w-[900px] lg:max-w-[1000px]">
         <DialogHeader>
           <DialogTitle>Detalles de {productoNombre}</DialogTitle>
-          <DialogDescription>Historial de compras y precios del producto.</DialogDescription>
+          <DialogDescription>Historial de compras, precios y movimientos de stock del producto.</DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="compras">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="compras">Historial de Compras</TabsTrigger>
-            <TabsTrigger value="precios">Historial de Precios</TabsTrigger>
+        <Tabs defaultValue="compras" className="w-full">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="compras"><ShoppingCart className="mr-2 h-4 w-4 inline-block" />Historial de Compras</TabsTrigger>
+            <TabsTrigger value="precios"><TrendingUp className="mr-2 h-4 w-4 inline-block" />Historial de Precios</TabsTrigger>
+            <TabsTrigger value="stock"><History className="mr-2 h-4 w-4 inline-block" />Historial de Stock</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="compras">
+          <TabsContent value="compras" className="max-h-[60vh] overflow-y-auto">
             {isLoadingCompras ? (
-              <div className="space-y-2">
+              <div className="space-y-2 py-4">
                 <Skeleton className="h-10 w-full" />
                 <Skeleton className="h-10 w-full" />
                 <Skeleton className="h-10 w-full" />
               </div>
             ) : errorCompras ? (
-              <div className="text-center py-4 text-destructive">Error al cargar las compras.</div>
+              <div className="text-center py-8 text-destructive">Error al cargar las compras.</div>
             ) : compras && compras.length > 0 ? (
               <Table>
                 <TableHeader>
@@ -222,7 +249,7 @@ export default function ProductPurchasesDialog({ productoId, productoNombre, chi
                 <TableBody>
                   {compras.map((compra: ProductPurchase) => (
                     <TableRow key={compra.id}>
-                      <TableCell>{format(parseISO(compra.created_at), "d MMM yyyy", { locale: es })}</TableCell>
+                      <TableCell>{format(parseISO(compra.created_at), "d MMM yyyy, HH:mm", { locale: es })}</TableCell>
                       <TableCell className="text-right">${compra.costo_unit.toFixed(2)}</TableCell>
                       <TableCell className="text-right">{compra.cantidad}</TableCell>
                       <TableCell className="text-right">{compra.restante}</TableCell>
@@ -239,19 +266,19 @@ export default function ProductPurchasesDialog({ productoId, productoNombre, chi
                 </TableBody>
               </Table>
             ) : (
-              <div className="text-center py-8 text-muted-foreground">Sin compras registradas.</div>
+              <div className="text-center py-8 text-muted-foreground">Sin compras registradas para este producto.</div>
             )}
           </TabsContent>
 
-          <TabsContent value="precios">
+          <TabsContent value="precios" className="max-h-[60vh] overflow-y-auto">
             {isLoadingHistorial ? (
-              <div className="space-y-2">
+              <div className="space-y-2 py-4">
                 <Skeleton className="h-10 w-full" />
                 <Skeleton className="h-10 w-full" />
                 <Skeleton className="h-10 w-full" />
               </div>
             ) : errorHistorial ? (
-              <div className="text-center py-4 text-destructive">Error al cargar el historial de precios.</div>
+              <div className="text-center py-8 text-destructive">Error al cargar el historial de precios.</div>
             ) : historialPrecios && historialPrecios.length > 0 ? (
               <Table>
                 <TableHeader>
@@ -259,34 +286,77 @@ export default function ProductPurchasesDialog({ productoId, productoNombre, chi
                     <TableHead>Fecha</TableHead>
                     <TableHead>Tipo</TableHead>
                     <TableHead className="text-right">Precio</TableHead>
-                    <TableHead className="text-center">Acciones</TableHead>
+                    <TableHead>Referencia Compra</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {historialPrecios.map((item: PriceHistory) => (
-                    <TableRow key={item.id}>
-                      <TableCell>{format(parseISO(item.created_at), "d MMM yyyy", { locale: es })}</TableCell>
+                  {historialPrecios.map((precio: PriceHistory) => (
+                    <TableRow key={precio.id}>
+                      <TableCell>{format(parseISO(precio.created_at), "d MMM yyyy, HH:mm", { locale: es })}</TableCell>
                       <TableCell>
-                        <Badge variant={item.tipo === "costo" ? "outline" : "secondary"}>
-                          {item.tipo === "costo" ? "Costo" : "Venta"}
+                        <Badge variant={precio.tipo === "venta" ? "default" : "secondary"}>
+                          {precio.tipo === "venta" ? "Precio Venta" : "Precio Costo"}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right">${item.precio.toFixed(2)}</TableCell>
+                      <TableCell className="text-right">${precio.precio.toFixed(2)}</TableCell>
                       <TableCell>
-                        <div className="flex items-center justify-center space-x-2">
-                          {item.compra_id ? (
-                            <PurchaseDetailsDialog compraId={item.compra_id} />
-                          ) : (
-                            <span className="text-muted-foreground text-sm">-</span>
-                          )}
-                        </div>
+                        {precio.compra_id ? (
+                          <PaymentDetailsDialog compraId={precio.compra_id} />
+                        ) : (
+                          <span className="text-muted-foreground text-sm">N/A</span>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
             ) : (
-              <div className="text-center py-8 text-muted-foreground">Sin historial de precios registrado.</div>
+              <div className="text-center py-8 text-muted-foreground">Sin historial de precios para este producto.</div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="stock" className="max-h-[60vh] overflow-y-auto">
+            {isLoadingMovimientosStock ? (
+              <div className="space-y-2 py-4">
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+              </div>
+            ) : errorMovimientosStock ? (
+              <div className="text-center py-8 text-destructive">Error al cargar el historial de stock.</div>
+            ) : movimientosStock && movimientosStock.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Fecha</TableHead>
+                    <TableHead>Tipo Movimiento</TableHead>
+                    <TableHead className="text-right">Cantidad</TableHead>
+                    <TableHead className="text-right">Stock Anterior</TableHead>
+                    <TableHead className="text-right">Stock Nuevo</TableHead>
+                    <TableHead>Notas</TableHead>
+                    <TableHead>Usuario</TableHead>
+                    <TableHead>Ref. ID</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {movimientosStock.map((mov: MovimientoStock & { usuario_email?: string | null }) => (
+                    <TableRow key={mov.id}>
+                      <TableCell>{format(parseISO(mov.fecha), "d MMM yyyy, HH:mm", { locale: es })}</TableCell>
+                      <TableCell>{formatTipoMovimiento(mov.tipo_movimiento)}</TableCell>
+                      <TableCell className={`text-right font-medium ${mov.cantidad > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {mov.cantidad > 0 ? `+${mov.cantidad}` : mov.cantidad}
+                      </TableCell>
+                      <TableCell className="text-right">{mov.stock_anterior}</TableCell>
+                      <TableCell className="text-right">{mov.stock_nuevo}</TableCell>
+                      <TableCell className="max-w-[150px] truncate" title={mov.notas || undefined}>{mov.notas || "-"}</TableCell>
+                      <TableCell className="max-w-[150px] truncate" title={mov.usuario_email || undefined}>{mov.usuario_email || "Sistema"}</TableCell>
+                      <TableCell>{mov.referencia_id || "-"}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">Sin movimientos de stock para este producto.</div>
             )}
           </TabsContent>
         </Tabs>

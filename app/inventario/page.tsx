@@ -12,6 +12,7 @@ import {
   Edit,
   Eye,
   Trash2,
+  SlidersHorizontal,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase-browser";
@@ -43,6 +44,8 @@ import { Badge } from "@/components/ui/badge";
 import { RealizarVentaButton } from "@/components/ventas/RealizarVentaButton";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
+import AjusteStockModal from "@/components/inventario/AjusteStockModal";
+import type { ProductoInventario } from "@/types/inventario.types";
 
 // Define the type for the product data received from Supabase
 type ProductoRaw = {
@@ -76,6 +79,8 @@ export default function InventarioPage() {
   const queryClient = useQueryClient(); // Get queryClient instance
   const [stockBajoAlertado, setStockBajoAlertado] = useState(false);
   const [busqueda, setBusqueda] = useState("");
+  const [isAjusteModalOpen, setIsAjusteModalOpen] = useState(false);
+  const [productoParaAjuste, setProductoParaAjuste] = useState<ProductoInventario | null>(null);
 
   // Fetch products using react-query
   const {
@@ -277,11 +282,24 @@ export default function InventarioPage() {
     return producto.stock_min > 0 && producto.stock <= producto.stock_min;
   };
 
-  // Filtrar productos según la búsqueda
-  const productosFiltrados = productos?.filter(p => 
-    p.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-    (p.sku && p.sku.toLowerCase().includes(busqueda.toLowerCase())) ||
-    (p.categoria_nombre && p.categoria_nombre.toLowerCase().includes(busqueda.toLowerCase()))
+  const handleOpenAjusteModal = (producto: Producto) => {
+    const productoInventario: ProductoInventario = {
+        id: producto.id,
+        nombre: producto.nombre,
+        sku: producto.sku,
+        stock: producto.stock,
+        costo_unit: producto.costo_unit,
+        precio_unit: producto.precio_unit,
+        created_at: "",
+    };
+    setProductoParaAjuste(productoInventario);
+    setIsAjusteModalOpen(true);
+  };
+
+  const productosFiltrados = productos?.filter((producto) =>
+    producto.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
+    (producto.sku && producto.sku.toLowerCase().includes(busqueda.toLowerCase())) ||
+    (producto.categoria_nombre && producto.categoria_nombre.toLowerCase().includes(busqueda.toLowerCase()))
   ) || [];
 
   return (
@@ -541,6 +559,15 @@ export default function InventarioPage() {
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8"
+                              title="Ajustar Stock Manualmente"
+                              onClick={() => handleOpenAjusteModal(producto)}
+                            >
+                              <SlidersHorizontal className="h-4 w-4 text-blue-600" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
                               aria-label="Disminuir stock"
                               onClick={() => updateStockMutation.mutate({ productoId: producto.id, incremento: -1 })}
                               disabled={updateStockMutation.isPending || producto.stock <= 0}
@@ -577,6 +604,13 @@ export default function InventarioPage() {
             )}
           </div>
         </div>
+      )}
+      {productoParaAjuste && (
+        <AjusteStockModal
+          producto={productoParaAjuste}
+          open={isAjusteModalOpen}
+          onOpenChange={setIsAjusteModalOpen}
+        />
       )}
     </div>
   );
