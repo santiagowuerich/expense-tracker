@@ -67,18 +67,25 @@ export function useCreateVenta() {
           subtotal: item.cantidad * item.precio_unitario
         }));
         
-        // Pagos: estrictamente solo metodo_pago y monto - sin cuotas ni recargo
-        // Aquí está la solución clave: crear objetos completamente nuevos y simples
-        const pagosData = [];
-        for (const pago of params.pagos) {
-          if (pago.monto > 0) {
-            // Construcción manual con solo los campos permitidos
-            pagosData.push({
+        // Pagos: incluir metodo_pago, monto, y opcionalmente cuotas y recargo
+        const pagosData = params.pagos
+          .filter(pago => typeof pago.monto === 'number' && pago.monto >= 0) // Permitir monto 0 si es necesario
+          .map(pago => {
+            const pagoParaEnviar: any = { // Usar 'any' temporalmente o definir un tipo local más estricto si se prefiere
               metodo_pago: pago.metodo_pago,
               monto: pago.monto
-            });
-          }
-        }
+            };
+            // Incluir cuotas y recargo solo si están definidos y son relevantes
+            if (pago.metodo_pago === "Tarjeta Crédito") {
+              if (typeof pago.cuotas === 'number') {
+                pagoParaEnviar.cuotas = pago.cuotas;
+              }
+              if (typeof pago.recargo === 'number') {
+                pagoParaEnviar.recargo = pago.recargo;
+              }
+            }
+            return pagoParaEnviar;
+          });
         
         // Construir parámetros para la RPC directamente, sin JSON.parse/stringify
         const rpcParams = {

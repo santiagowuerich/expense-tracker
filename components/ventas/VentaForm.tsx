@@ -462,22 +462,37 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
       }
 
     try {
-      // Enfoque radical para asegurar que no se envíen campos problemáticos
+      // Preparar los datos de pago para enviar, incluyendo cuotas y recargo
+      const pagosParaEnviar = (values.pagos ?? [])
+        .filter(p => typeof p.monto === 'number') // Asegurar que el monto sea un número y que el pago exista
+        .map(pago => {
+          const pagoEnviado: { // Definición explícita para claridad, se alineará con VentaPago
+            metodo_pago: string;
+            monto: number;
+            cuotas?: number; // undefined si no se establece
+            recargo?: number; // undefined si no se establece
+          } = {
+            metodo_pago: pago.metodo_pago,
+            monto: pago.monto,
+            // No se inicializan cuotas y recargo aquí, serán undefined por defecto
+          };
+
+          // Incluir cuotas y recargo solo si están definidos y son relevantes (ej. para Tarjeta Crédito)
+          if (pago.metodo_pago === "Tarjeta Crédito") {
+            if (typeof pago.cuotas === 'number' && pago.cuotas >= 1) { // cuotas >= 1 (1 para contado)
+              pagoEnviado.cuotas = pago.cuotas;
+            }
+            if (typeof pago.recargo === 'number' && pago.recargo >= 0) { // recargo puede ser 0
+              pagoEnviado.recargo = pago.recargo;
+            }
+          }
+          return pagoEnviado;
+        });
       
-      // 1. Para los pagos, solo incluir metodo_pago y monto
-      const pagosMinimos = (values.pagos ?? [])
-        .filter(p => p.monto > 0)
-        .map(pago => ({
-          metodo_pago: pago.metodo_pago,
-          monto: pago.monto
-          // NO incluir cuotas ni recargo
-        }));
-      
-      // 2. Objeto completo para enviar
       const ventaDataToSend = {
         cliente: values.cliente,
         items: values.items,
-        pagos: pagosMinimos,  // Solo con campos metodo_pago y monto
+        pagos: pagosParaEnviar, // Usar los pagos procesados con cuotas y recargo
         mensajeInterno: values.mensajeInterno || "",
         mensajeExterno: values.mensajeExterno || ""
       };
@@ -734,15 +749,32 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
                             control={form.control}
                             name={`items.${index}.cantidad`}
                             render={({ field: cantidadField }) => (
-                              <FormItem>
+                              <FormItem className="w-full md:max-w-[100px]">
                                 <FormLabel>Cantidad *</FormLabel>
                                 <FormControl>
                                   <Input
-                                    type="number"
-                                    min={1}
+                                    type="text"
+                                    inputMode="numeric"
+                                    placeholder="Cant."
                                     {...cantidadField}
-                                    value={cantidadField.value || 0}
-                                    onChange={(e) => handleCantidadChange(index, e.target.value)}
+                                    onChange={(event) => {
+                                      const value = event.target.value;
+                                      if (value === '' || /^[0-9]+$/.test(value)) {
+                                        // Pasamos string vacío o el número parseado
+                                        // Zod con coerce se encargará de la conversión y validación
+                                        cantidadField.onChange(value === '' ? '' : value); 
+                                        // Actualizar el precio si el producto ya está seleccionado
+                                        const currentProductoId = form.getValues(`items.${index}.producto_id`);
+                                        if (currentProductoId) {
+                                          // No es necesario llamar a actualizarPrecioPorProducto aquí directamente
+                                          // si el precio ya está fijado, solo recalculamos el total.
+                                          // La validación y el cálculo de totales se harán por los watchers/onSubmit.
+                                        }
+                                      }
+                                    }}
+                                    onFocus={(e) => e.target.select()}
+                                    onWheel={(event) => (event.target as HTMLElement).blur()}
+                                    className="text-center"
                                   />
                                 </FormControl>
                                 <FormMessage />
@@ -756,16 +788,25 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
                             control={form.control}
                             name={`items.${index}.precio_unitario`}
                             render={({ field: precioField }) => (
-                              <FormItem>
+                              <FormItem className="w-full md:max-w-[150px]">
                                 <FormLabel>Precio *</FormLabel>
                                 <FormControl>
                                   <Input
-                                    type="number"
-                                    step="0.01"
-                                    min="0"
+                                    type="text"
+                                    inputMode="decimal" // Permite decimales en teclados móviles
+                                    placeholder="Precio"
                                     {...precioField}
-                                    value={precioField.value || 0}
-                                    onChange={(e) => handlePrecioChange(index, e.target.value)}
+                                    onChange={(event) => {
+                                      const value = event.target.value;
+                                      // Permitir números, un solo punto decimal, y vacío
+                                      if (value === '' || /^[0-9]*\.?([0-9]{1,2})?$/.test(value)) {
+                                        // Zod con coerce se encargará de la conversión y validación
+                                        precioField.onChange(value === '' ? '' : value);
+                                      }
+                                    }}
+                                    onFocus={(e) => e.target.select()}
+                                    onWheel={(event) => (event.target as HTMLElement).blur()}
+                                    className="text-right"
                                   />
                                 </FormControl>
                                 <FormMessage />
@@ -774,8 +815,8 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
                           />
                         </div>
 
-                        <div className="col-span-10 md:col-span-2 flex items-end">
-                          <div className="w-full text-right">
+                        <div className="col-span-10 md:col-span-2 flex items-end justify-end">
+                          <div className="text-right">
                             <p className="text-sm font-medium">Subtotal:</p>
                             <p className="text-lg font-semibold">
                               ${((form.watch(`items.${index}.cantidad`) || 0) * 
@@ -784,13 +825,14 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
                           </div>
                         </div>
 
-                        <div className="absolute right-4 top-4">
+                        <div className="col-span-2 md:col-span-12 flex justify-end items-start md:absolute md:right-4 md:top-4">
                           {itemFields.length > 1 && (
                             <Button
                               type="button"
                               variant="ghost"
                               size="icon"
                               onClick={() => removeItem(index)}
+                              className="mt-0 md:mt-0" // Ajuste para alinear mejor en móvil y que no afecte desktop
                             >
                               <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
@@ -907,8 +949,18 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
                               min="0"
                               placeholder="0.00"
                               {...montoField}
-                              value={montoField.value || 0}
-                              onChange={(e) => handlePagoMontoChange(index, e.target.value)}
+                              value={montoField.value || ''}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                // Let react-hook-form and Zod handle coercion.
+                                // Pass the string value directly to the field's onChange.
+                                montoField.onChange(val);
+                                // Call your existing handler for manual override and other logic.
+                                // Note: handlePagoMontoChange expects a string value now.
+                                handlePagoMontoChange(index, val); 
+                              }}
+                              onFocus={(e) => e.target.select()}
+                              onWheel={(event) => (event.target as HTMLElement).blur()}
                             />
                           </FormControl>
                           <FormMessage />
@@ -921,49 +973,76 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
                         <h5 className="text-sm font-medium">Opciones de Cuotas (Tarjeta de Crédito)</h5>
                         <div className="space-y-2">
                           <div className="flex items-center space-x-2">
-                            <input 
-                              type="radio" 
-                              id={`contado-${index}`} 
-                              name={`cuotasOpcion-${field.id}`} // Unique name per payment item for radio group
-                              checked={!cuotasTarjeta[field.metodo_pago] || cuotasTarjeta[field.metodo_pago].cuotas === 1}
-                              onChange={() => handleCuotasChange(field.metodo_pago, 1)}
-                              className="h-4 w-4 rounded-full"
+                            <Controller
+                              control={form.control}
+                              name={`pagos.${index}.cuotas`}
+                              render={({ field: controllerField }) => (
+                                <input 
+                                  type="radio" 
+                                  id={`contado-${index}-${field.id}`} 
+                                  name={`cuotasOpcion-${field.id}`}
+                                  checked={cuotasTarjeta[pagoFields[index].metodo_pago]?.cuotas === 1 || form.getValues(`pagos.${index}.cuotas`) === 1}
+                                  onChange={() => {
+                                    handleCuotasChange(pagoFields[index].metodo_pago, 1);
+                                    controllerField.onChange(1);
+                                  }}
+                                  className="h-4 w-4"
+                                />
+                              )}
                             />
-                            <label htmlFor={`contado-${index}`} className="text-sm">
+                            <label htmlFor={`contado-${index}-${field.id}`} className="text-sm">
                               Contado (Sin recargo)
                             </label>
                           </div>
                           <div className="flex items-center space-x-2">
-                            <input 
-                              type="radio" 
-                              id={`tres-cuotas-${index}`} 
-                              name={`cuotasOpcion-${field.id}`} // Unique name
-                              checked={cuotasTarjeta[field.metodo_pago]?.cuotas === 3}
-                              onChange={() => handleCuotasChange(field.metodo_pago, 3)}
-                              className="h-4 w-4 rounded-full"
+                             <Controller
+                              control={form.control}
+                              name={`pagos.${index}.cuotas`}
+                              render={({ field: controllerField }) => (
+                                <input 
+                                  type="radio" 
+                                  id={`tres-cuotas-${index}-${field.id}`} 
+                                  name={`cuotasOpcion-${field.id}`}
+                                  checked={cuotasTarjeta[pagoFields[index].metodo_pago]?.cuotas === 3 || form.getValues(`pagos.${index}.cuotas`) === 3}
+                                  onChange={() => {
+                                    handleCuotasChange(pagoFields[index].metodo_pago, 3);
+                                    controllerField.onChange(3);
+                                  }}
+                                  className="h-4 w-4"
+                                />
+                               )}
                             />
-                            <label htmlFor={`tres-cuotas-${index}`} className="text-sm">
+                            <label htmlFor={`tres-cuotas-${index}-${field.id}`} className="text-sm">
                               3 Cuotas (20% recargo)
                             </label>
                           </div>
                           <div className="flex items-center space-x-2">
-                            <input 
-                              type="radio" 
-                              id={`seis-cuotas-${index}`} 
-                              name={`cuotasOpcion-${field.id}`} // Unique name
-                              checked={cuotasTarjeta[field.metodo_pago]?.cuotas === 6}
-                              onChange={() => handleCuotasChange(field.metodo_pago, 6)}
-                              className="h-4 w-4 rounded-full"
+                            <Controller
+                              control={form.control}
+                              name={`pagos.${index}.cuotas`}
+                              render={({ field: controllerField }) => (
+                                <input 
+                                  type="radio" 
+                                  id={`seis-cuotas-${index}-${field.id}`} 
+                                  name={`cuotasOpcion-${field.id}`}
+                                  checked={cuotasTarjeta[pagoFields[index].metodo_pago]?.cuotas === 6 || form.getValues(`pagos.${index}.cuotas`) === 6}
+                                  onChange={() => {
+                                    handleCuotasChange(pagoFields[index].metodo_pago, 6);
+                                    controllerField.onChange(6);
+                                  }}
+                                  className="h-4 w-4"
+                                />
+                              )}
                             />
-                            <label htmlFor={`seis-cuotas-${index}`} className="text-sm">
+                            <label htmlFor={`seis-cuotas-${index}-${field.id}`} className="text-sm">
                               6 Cuotas (30% recargo)
                             </label>
                           </div>
                           
-                          {cuotasTarjeta[field.metodo_pago]?.recargo > 0 && (
+                          {cuotasTarjeta[pagoFields[index].metodo_pago]?.recargo > 0 && (
                             <div className="text-sm text-muted-foreground mt-2">
-                              Recargo: {cuotasTarjeta[field.metodo_pago]?.recargo * 100}% 
-                              (${((form.getValues(`pagos.${index}.monto`) || 0) / (1 + (cuotasTarjeta[field.metodo_pago]?.recargo || 0))) * (cuotasTarjeta[field.metodo_pago]?.recargo || 0) })
+                              Recargo: {cuotasTarjeta[pagoFields[index].metodo_pago]?.recargo * 100}% 
+                              (${((form.getValues(`pagos.${index}.monto`) || 0) / (1 + (cuotasTarjeta[pagoFields[index].metodo_pago]?.recargo || 0))) * (cuotasTarjeta[pagoFields[index].metodo_pago]?.recargo || 0) })
                             </div>
                           )}
                         </div>
@@ -1017,7 +1096,7 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
             <Button type="button" variant="outline" onClick={onSuccess}>Cancelar</Button>
             <Button 
               type="submit" 
-              disabled={createVenta.isPending || isLoadingProductos || Math.abs(montoRestante) >= 0.01 || form.formState.isSubmitting}
+              disabled={createVenta.isPending || isLoadingProductos || Math.abs(montoRestante) >= 0.01 || form.formState.isSubmitting || itemFields.length === 0}
             >
               { (createVenta.isPending || form.formState.isSubmitting) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               { (createVenta.isPending || form.formState.isSubmitting) ? "Procesando..." : "Finalizar Venta"}
