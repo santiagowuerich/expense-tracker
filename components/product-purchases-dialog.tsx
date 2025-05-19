@@ -4,6 +4,7 @@ import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { format, parseISO } from "date-fns"
 import { es } from "date-fns/locale"
+import Link from 'next/link';
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -15,7 +16,7 @@ import {
 } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Eye, PackageSearch, ShoppingCart, TrendingUp, History } from "lucide-react"
+import { Eye, PackageSearch, ShoppingCart, TrendingUp, History, ExternalLink } from "lucide-react"
 import { createClient } from "@/lib/supabase-browser"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
@@ -62,6 +63,16 @@ const formatTipoMovimiento = (tipo: MovimientoStock['tipo_movimiento']): string 
     perdida_rotura: "Pérdida/Rotura",
   };
   return map[tipo] || tipo;
+};
+
+// Función auxiliar para verificar si un movimiento es una venta (más flexible)
+const esMovimientoVenta = (tipo: string): boolean => {
+  // Convertir a minúsculas para hacer la comparación insensible a mayúsculas/minúsculas
+  const tipoLower = tipo.toLowerCase();
+  return tipoLower === 'venta' || 
+         tipoLower === 'salida_venta' || 
+         tipoLower.includes('venta') || 
+         tipoLower.includes('salida');
 };
 
 export default function ProductPurchasesDialog({ productoId, productoNombre, children }: ProductPurchasesDialogProps) {
@@ -318,45 +329,68 @@ export default function ProductPurchasesDialog({ productoId, productoNombre, chi
           <TabsContent value="stock" className="max-h-[60vh] overflow-y-auto">
             {isLoadingMovimientosStock ? (
               <div className="space-y-2 py-4">
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-full" />
+                {[...Array(3)].map((_, i) => <Skeleton key={`skel-stock-${i}`} className="h-10 w-full" />)}
               </div>
             ) : errorMovimientosStock ? (
-              <div className="text-center py-8 text-destructive">Error al cargar el historial de stock.</div>
+              <div className="text-center py-8 text-destructive">
+                Error al cargar el historial de stock: {errorMovimientosStock.message}
+              </div>
             ) : movimientosStock && movimientosStock.length > 0 ? (
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Fecha</TableHead>
-                    <TableHead>Tipo Movimiento</TableHead>
+                    <TableHead>Tipo</TableHead>
                     <TableHead className="text-right">Cantidad</TableHead>
                     <TableHead className="text-right">Stock Anterior</TableHead>
                     <TableHead className="text-right">Stock Nuevo</TableHead>
-                    <TableHead>Notas</TableHead>
+                    <TableHead>Notas/Ref.</TableHead>
                     <TableHead>Usuario</TableHead>
-                    <TableHead>Ref. ID</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {movimientosStock.map((mov: MovimientoStock & { usuario_email?: string | null }) => (
-                    <TableRow key={mov.id}>
-                      <TableCell>{format(parseISO(mov.fecha), "d MMM yyyy, HH:mm", { locale: es })}</TableCell>
-                      <TableCell>{formatTipoMovimiento(mov.tipo_movimiento)}</TableCell>
-                      <TableCell className={`text-right font-medium ${mov.cantidad > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {mov.cantidad > 0 ? `+${mov.cantidad}` : mov.cantidad}
+                  {movimientosStock.map((movimiento) => (
+                    <TableRow key={movimiento.id}>
+                      <TableCell>
+                        {movimiento.fecha ? format(parseISO(movimiento.fecha), "dd/MM/yyyy HH:mm", { locale: es }) : "N/A"}
                       </TableCell>
-                      <TableCell className="text-right">{mov.stock_anterior}</TableCell>
-                      <TableCell className="text-right">{mov.stock_nuevo}</TableCell>
-                      <TableCell className="max-w-[150px] truncate" title={mov.notas || undefined}>{mov.notas || "-"}</TableCell>
-                      <TableCell className="max-w-[150px] truncate" title={mov.usuario_email || undefined}>{mov.usuario_email || "Sistema"}</TableCell>
-                      <TableCell>{mov.referencia_id || "-"}</TableCell>
+                      <TableCell>
+                        {esMovimientoVenta(movimiento.tipo_movimiento) && movimiento.referencia_id ? (
+                          <Link 
+                            href={`/ventas/${movimiento.referencia_id}`} 
+                            className="text-blue-600 hover:underline flex items-center"
+                            title="Ver detalle de venta"
+                          >
+                            {formatTipoMovimiento(movimiento.tipo_movimiento) || 'VENTA'}
+                            <ExternalLink className="h-3 w-3 ml-1" />
+                          </Link>
+                        ) : (
+                          formatTipoMovimiento(movimiento.tipo_movimiento)
+                        )}
+                      </TableCell>
+                      <TableCell className={`text-right ${movimiento.cantidad < 0 ? 'text-red-500' : 'text-green-500'}`}>
+                        {movimiento.cantidad}
+                      </TableCell>
+                      <TableCell className="text-right">{movimiento.stock_anterior}</TableCell>
+                      <TableCell className="text-right">{movimiento.stock_nuevo}</TableCell>
+                      <TableCell>
+                        {movimiento.tipo_movimiento === 'salida_venta' && movimiento.referencia_id ? (
+                          <>Venta: {movimiento.referencia_id?.substring(0,8)}...</>
+                        ) : movimiento.notas ? (
+                          movimiento.notas.length > 30 ? `${movimiento.notas.substring(0, 27)}...` : movimiento.notas
+                        ) : movimiento.referencia_id ? (
+                          <>Ref: {movimiento.referencia_id?.substring(0,8)}...</>
+                        ) : (
+                          <>{/* No mostrar nada si no hay notas ni ref relevante */}</>
+                        )}
+                      </TableCell>
+                      <TableCell>{movimiento.usuario_email || (movimiento.creado_por ? movimiento.creado_por.substring(0,8)+'...' : 'Sistema')}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
             ) : (
-              <div className="text-center py-8 text-muted-foreground">Sin movimientos de stock para este producto.</div>
+              <div className="text-center py-8 text-muted-foreground">No hay movimientos de stock para este producto.</div>
             )}
           </TabsContent>
         </Tabs>
