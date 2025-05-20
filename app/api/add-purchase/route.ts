@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase-server"
 import { v4 as uuidv4 } from "uuid"
+import { cookies } from 'next/headers'
 
 export async function POST(request: Request) {
   try {
-    const supabase = createClient()
+    // Uso asíncrono de cookies()
+    const cookieStore = await cookies()
+    const supabase = await createClient(cookieStore)
     const body = await request.json()
 
     // Validación básica

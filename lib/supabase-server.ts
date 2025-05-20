@@ -1,18 +1,33 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
-// No es necesario importar ReadonlyRequestCookies si usamos un tipo más genérico o 'any'
-// para el parámetro cookieStore, ya que el objeto real de next/headers' cookies()
-// en el contexto de Server Actions/Route Handlers sí tiene .set().
+import { cookies } from 'next/headers'
 
 // Función única para crear el cliente Supabase en el servidor 
 // (para uso en API Routes, Server Actions, y Server Components que leen cookies)
-export function createClient(cookieStore: any) { // Usar 'any' para simplificar el tipado aquí
+export async function createClient(cookieStore?: any) {
+  // Si no se proporciona cookieStore, intentamos obtenerlo aquí de forma asíncrona
+  if (!cookieStore) {
+    try {
+      cookieStore = await cookies();
+    } catch (error) {
+      // Si falla, es probable que estemos fuera del contexto de un request
+      console.warn('Error al intentar obtener cookies automáticamente. Asegúrate de pasar cookieStore explícitamente para Route Handlers.');
+      
+      // Proporcionamos un store vacío para evitar errores
+      cookieStore = {
+        get: () => null,
+        set: () => {},
+        remove: () => {},
+      };
+    }
+  }
+
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        async get(name: string) {
-          const cookie = await cookieStore.get(name);
+        get(name: string) {
+          const cookie = cookieStore.get(name);
           return cookie?.value;
         },
         set(name: string, value: string, options: CookieOptions) {

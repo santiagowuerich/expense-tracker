@@ -288,8 +288,10 @@ export default function InventarioPage() {
         nombre: producto.nombre,
         sku: producto.sku,
         stock: producto.stock,
+        stock_actual: producto.stock,
         costo_unit: producto.costo_unit,
         precio_unit: producto.precio_unit,
+        precio_venta: producto.precio_unit ?? 0,
         created_at: "",
     };
     setProductoParaAjuste(productoInventario);

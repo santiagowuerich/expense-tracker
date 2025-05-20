@@ -10,8 +10,8 @@ import { createClient } from './supabase-server'; // Importar el cliente central
  * Inicia sesión con email y contraseña
  */
 export async function loginWithEmail(email: string, password: string) {
-  const cookieStore = cookies();
-  const supabase = createClient(cookieStore);
+  const cookieStore = await cookies();
+  const supabase = await createClient(cookieStore);
   
   return await supabase.auth.signInWithPassword({
     email,
@@ -23,8 +23,8 @@ export async function loginWithEmail(email: string, password: string) {
  * Registra un nuevo usuario con email y contraseña
  */
 export async function registerWithEmail(email: string, password: string, name: string) {
-  const cookieStore = cookies();
-  const supabase = createClient(cookieStore);
+  const cookieStore = await cookies();
+  const supabase = await createClient(cookieStore);
   
   // Registro del usuario en Supabase Auth
   const authResponse = await supabase.auth.signUp({
@@ -61,8 +61,8 @@ export async function registerWithEmail(email: string, password: string, name: s
  * Cierra la sesión del usuario actual
  */
 export async function signOut() {
-  const cookieStore = cookies();
-  const supabase = createClient(cookieStore);
+  const cookieStore = await cookies();
+  const supabase = await createClient(cookieStore);
   await supabase.auth.signOut();
   redirect('/auth/login');
 }
@@ -71,8 +71,8 @@ export async function signOut() {
  * Obtiene el usuario actual
  */
 export async function getCurrentUser() {
-  const cookieStore = cookies();
-  const supabase = createClient(cookieStore);
+  const cookieStore = await cookies();
+  const supabase = await createClient(cookieStore);
   const { data: { user } } = await supabase.auth.getUser();
   return user;
 }
@@ -82,8 +82,8 @@ export async function getCurrentUser() {
  * Redirige a la página de login si no hay sesión
  */
 export async function requireAuth() {
-  const cookieStore = cookies();
-  const supabase = createClient(cookieStore);
+  const cookieStore = await cookies();
+  const supabase = await createClient(cookieStore);
   const { data: { session } } = await supabase.auth.getSession();
   
   if (!session) {

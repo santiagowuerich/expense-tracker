@@ -64,9 +64,9 @@ export function useCreateVenta() {
           producto_id: item.producto_id,
           cantidad: item.cantidad,
           precio_unitario: item.precio_unitario,
-          subtotal: item.cantidad * item.precio_unitario
-        }));
-        
+        subtotal: item.cantidad * item.precio_unitario
+      }));
+
         // Pagos: incluir metodo_pago, monto, y opcionalmente cuotas y recargo
         const pagosData = params.pagos
           .filter(pago => typeof pago.monto === 'number' && pago.monto >= 0) // Permitir monto 0 si es necesario
@@ -97,17 +97,17 @@ export function useCreateVenta() {
         };
         
         console.log("Enviando RPC realizar_venta con parámetros:", JSON.stringify(rpcParams, null, 2));
-        
-        // Llamar a la función RPC para realizar la venta atomicamente
-        const { data, error } = await supabase
-          .rpc('realizar_venta', rpcParams);
-          
+
+      // Llamar a la función RPC para realizar la venta atomicamente
+      const { data, error } = await supabase
+        .rpc('realizar_venta', rpcParams);
+
         if (error) {
           console.error("Error detallado de RPC:", JSON.stringify(error, null, 2));
           throw error;
         }
         
-        return data as string; // ID de la venta
+      return data as string; // ID de la venta
       } catch (err) {
         console.error("Error en try/catch de RPC:", err);
         throw err;

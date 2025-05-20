@@ -4,8 +4,9 @@ import { cookies } from 'next/headers';
 
 export async function POST(request: Request) {
   try {
-    const cookieStore = cookies();
-    const supabase = createClient(cookieStore);
+    // Uso asíncrono de cookies()
+    const cookieStore = await cookies();
+    const supabase = await createClient(cookieStore);
     const body = await request.json()
 
     // Obtener el usuario actual

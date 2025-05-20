@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase-server"
+import { cookies } from 'next/headers'
 
 export async function GET() {
   try {
-    const supabase = createClient()
+    // Uso asíncrono de cookies()
+    const cookieStore = await cookies()
+    const supabase = await createClient(cookieStore)
 
     // Consulta simple a la tabla tarjetas
     const { data, error } = await supabase.from("tarjetas").select("id, alias").limit(5)

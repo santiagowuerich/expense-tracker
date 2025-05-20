@@ -163,7 +163,7 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
   const totalPagadoCalculado = currentPagos.reduce((sum, pago) => {
     return sum + (Number(pago.monto) || 0);
   }, 0);
-  
+
   // Total final de la venta a mostrar en UI (productos + recargos)
   // Para evitar inconsistencias, si hay pagos con tarjeta de crédito en cuotas,
   // usamos el totalPagadoCalculado como fuente única de verdad.
@@ -178,7 +178,7 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
     if (hayPagoTarjetaCredito && Math.abs(totalPagadoCalculado - totalVentaProductos) > 0.01) {
       return totalPagadoCalculado;
     }
-    
+
     // En cualquier otro caso, mantenemos el total de productos
     return totalVentaProductos;
   }, [totalVentaProductos, totalPagadoCalculado, currentPagos]);
@@ -250,7 +250,7 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
         return; 
       }
     }
-    
+
     if (activePagos.length === 1) {
       const pagoActual = activePagos[0];
       const metodo = pagoActual.metodo_pago;
@@ -297,7 +297,7 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
         });
         setCuotasTarjeta({...cuotasTarjeta, [metodo]: { cuotas: 1, recargo: 0 }});
       } else {
-        appendPago({ metodo_pago: metodo, monto: 0 });
+      appendPago({ metodo_pago: metodo, monto: 0 }); 
       }
     } else if (!isChecked && index !== -1) {
       removePago(index);
@@ -385,7 +385,7 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
         const recargoAnterior = pagoActual.recargo || 0;
         if (pagoActual.monto > 0) {
              montoBaseParaRecargo = pagoActual.monto / (1 + recargoAnterior);
-        } else {
+    } else {
             // Si el monto es 0, y hay varios pagos, es difícil saber la base.
             // Podríamos tomar totalVentaProductos / num_pagos_activos_con_monto_cero_o_tarjeta.
             // Dejemos que el useEffect que distribuye lo haga, y si el usuario cambia cuotas de un pago con 0,
@@ -425,7 +425,7 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
     const metodoDelPago = form.getValues(`pagos.${index}.metodo_pago`);
     
     if (!isNaN(monto)) {
-      setManualOverride(prev => ({ ...prev, [metodoDelPago]: true }));
+        setManualOverride(prev => ({ ...prev, [metodoDelPago]: true }));
       
       if (metodoDelPago === "Tarjeta Crédito" && cuotasTarjeta[metodoDelPago]?.recargo > 0) {
         form.setValue(`pagos.${index}.monto`, monto, { shouldValidate: true });
@@ -490,8 +490,8 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
         });
       
       const ventaDataToSend = {
-        cliente: values.cliente,
-        items: values.items,
+          cliente: values.cliente,
+          items: values.items,
         pagos: pagosParaEnviar, // Usar los pagos procesados con cuotas y recargo
         mensajeInterno: values.mensajeInterno || "",
         mensajeExterno: values.mensajeExterno || ""
@@ -680,7 +680,7 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
                                 <FormLabel>Producto *</FormLabel>
                                 <Popover open={openComboboxes[index] || false} onOpenChange={(isOpen) => handleComboboxOpenChange(index, isOpen)}>
                                   <PopoverTrigger asChild>
-                                    <FormControl>
+                                  <FormControl>
                                       <Button
                                         variant="outline"
                                         role="combobox"
@@ -696,7 +696,7 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
                                           : "Seleccionar producto"}
                                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                       </Button>
-                                    </FormControl>
+                                  </FormControl>
                                   </PopoverTrigger>
                                   <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
                                     <Command filter={() => 1}>
@@ -729,10 +729,10 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
                                               />
                                               {producto.nombre}
                                               <span className="ml-2 text-xs text-muted-foreground">
-                                                (Stock: {producto.stock})
-                                              </span>
+                                          (Stock: {producto.stock})
+                                        </span>
                                             </CommandItem>
-                                          ))}
+                                    ))}
                                         </CommandGroup>
                                       </CommandList>
                                     </Command>
@@ -914,7 +914,7 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
                 <FormField
                   key={metodo}
                   control={form.control}
-                  name={`_control_pago_${metodo}` as any} 
+                  name={`_control_pago_${metodo}` as any}
                   render={() => (
                     <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 shadow-sm">
                       <FormControl>
@@ -936,19 +936,19 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
                 <h4 className="font-medium">Ingresar Montos</h4>
                 {pagoFields.map((field, index) => (
                   <div key={field.id} className="space-y-4">
-                    <FormField
-                      control={form.control}
-                      name={`pagos.${index}.monto`}
-                      render={({ field: montoField }) => (
-                        <FormItem className="flex items-center gap-4">
-                          <FormLabel className="w-32 shrink-0">{field.metodo_pago}:</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              placeholder="0.00"
-                              {...montoField}
+                  <FormField
+                    control={form.control}
+                    name={`pagos.${index}.monto`}
+                    render={({ field: montoField }) => (
+                      <FormItem className="flex items-center gap-4">
+                        <FormLabel className="w-32 shrink-0">{field.metodo_pago}:</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="0.00"
+                            {...montoField}
                               value={montoField.value || ''}
                               onChange={(e) => {
                                 const val = e.target.value;
@@ -961,12 +961,12 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
                               }}
                               onFocus={(e) => e.target.select()}
                               onWheel={(event) => (event.target as HTMLElement).blur()}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                     
                     {field.metodo_pago === "Tarjeta Crédito" && (
                       <div className="ml-32 space-y-2 border-l-2 pl-4 border-primary/20">

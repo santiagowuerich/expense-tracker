@@ -313,9 +313,9 @@ export default function ProductPurchasesDialog({ productoId, productoNombre, chi
                       <TableCell>
                         {precio.compra_id ? (
                           <PaymentDetailsDialog compraId={precio.compra_id} />
-                        ) : (
+                          ) : (
                           <span className="text-muted-foreground text-sm">N/A</span>
-                        )}
+                          )}
                       </TableCell>
                     </TableRow>
                   ))}

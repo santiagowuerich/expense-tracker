@@ -42,8 +42,9 @@ async function descontarStock(supabase: any, prodId: string, qty: number) {
 
 export async function POST(request: Request) {
   try {
-    const cookieStore = cookies()
-    const supabase = createClient(cookieStore)
+    // Uso asíncrono de cookies()
+    const cookieStore = await cookies()
+    const supabase = await createClient(cookieStore)
     const data = await request.json()
 
     const {

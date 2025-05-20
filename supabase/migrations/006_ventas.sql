@@ -6,6 +6,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- Tabla de clientes
 CREATE TABLE IF NOT EXISTS public.clientes (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
   nombre TEXT NOT NULL,
   dni_cuit TEXT NOT NULL,
   direccion TEXT,
@@ -19,9 +20,20 @@ CREATE TABLE IF NOT EXISTS public.clientes (
 -- Tabla de ventas
 CREATE TABLE IF NOT EXISTS public.ventas (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
   cliente_id UUID REFERENCES public.clientes(id),
   fecha TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   total DECIMAL(10,2) NOT NULL,
+  monto_original DECIMAL(10,2),
+  metodo_pago TEXT,
+  numero_cuotas INTEGER,
+  porcentaje_recargo DECIMAL(10,4),
+  monto_recargo DECIMAL(10,2),
+  monto_total_con_recargo DECIMAL(10,2),
+  monto_por_cuota DECIMAL(10,2),
+  estado_pago TEXT DEFAULT 'PENDIENTE',
+  mensaje_interno TEXT,
+  mensaje_externo TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -29,6 +41,7 @@ CREATE TABLE IF NOT EXISTS public.ventas (
 CREATE TABLE IF NOT EXISTS public.ventas_items (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   venta_id UUID REFERENCES public.ventas(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
   producto_id UUID REFERENCES public.productos(id),
   cantidad INTEGER NOT NULL,
   precio_unitario DECIMAL(10,2) NOT NULL,
@@ -40,10 +53,30 @@ CREATE TABLE IF NOT EXISTS public.ventas_items (
 CREATE TABLE IF NOT EXISTS public.ventas_pagos (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   venta_id UUID NOT NULL REFERENCES public.ventas(id) ON DELETE CASCADE,
-  metodo_pago TEXT NOT NULL, -- Ej: 'Efectivo', 'Tarjeta Débito', 'Transferencia'
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  metodo_pago TEXT NOT NULL,
   monto DECIMAL(10,2) NOT NULL,
+  cuotas INTEGER,
+  recargo DECIMAL(10,2),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- HABILITAR RLS y definir políticas
+ALTER TABLE public.clientes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Los usuarios pueden gestionar sus propios clientes" ON public.clientes
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+ALTER TABLE public.ventas ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Los usuarios pueden gestionar sus propias ventas" ON public.ventas
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+ALTER TABLE public.ventas_items ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Los usuarios pueden gestionar sus propios items de venta" ON public.ventas_items
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+ALTER TABLE public.ventas_pagos ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Los usuarios pueden gestionar sus propios pagos de venta" ON public.ventas_pagos
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
 -- Modificar Función para realizar una venta atomicamente (añadir manejo de pagos)
 CREATE OR REPLACE FUNCTION realizar_venta(
@@ -145,18 +178,6 @@ BEGIN
   RETURN _venta_id;
 END;
 $$;
-
--- Desactivar RLS para permitir acceso público durante pruebas iniciales
-ALTER TABLE public.clientes DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.ventas DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.ventas_items DISABLE ROW LEVEL SECURITY;
-ALTER TABLE public.ventas_pagos DISABLE ROW LEVEL SECURITY;
-
--- Asegurar que las tablas sean accesibles para todos
-GRANT ALL ON public.clientes TO anon, authenticated;
-GRANT ALL ON public.ventas TO anon, authenticated;
-GRANT ALL ON public.ventas_items TO anon, authenticated;
-GRANT ALL ON public.ventas_pagos TO anon, authenticated;
 
 -- Actualizar la función update_stock_producto
 CREATE OR REPLACE FUNCTION update_stock_producto(_prod_id UUID)

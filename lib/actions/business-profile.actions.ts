@@ -21,8 +21,8 @@ type BusinessProfileFormValues = z.infer<typeof businessProfileSchema>
 const PROFILE_ID = 1; 
 
 export async function upsertBusinessProfile(data: BusinessProfileFormValues) {
-  const cookieStore = cookies()
-  const supabase = createClient(cookieStore)
+  const cookieStore = await cookies()
+  const supabase = await createClient(cookieStore)
 
   const {
     data: { user },
@@ -65,8 +65,8 @@ export async function upsertBusinessProfile(data: BusinessProfileFormValues) {
 }
 
 export async function getBusinessProfile() {
-  const cookieStore = cookies()
-  const supabase = createClient(cookieStore)
+  const cookieStore = await cookies()
+  const supabase = await createClient(cookieStore)
 
   const {
     data: { user },

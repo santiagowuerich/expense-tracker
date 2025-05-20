@@ -51,7 +51,7 @@ export function useSaveProductMutation() {
 }
 
 // Tipos de inventario (asegúrate que la ruta sea correcta)
-import type { MovimientoStock } from "@/types/inventario.types.ts";
+import type { MovimientoStock } from "@/types/inventario.types";
 
 // Hook para obtener movimientos de stock por producto
 export function useMovimientosStockQuery(productoId: string | null, enabled: boolean = true) {

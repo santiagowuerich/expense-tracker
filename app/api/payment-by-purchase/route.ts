@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase-server"
+import { cookies } from 'next/headers'
 
 export async function GET(request: Request) {
   try {
@@ -10,7 +11,9 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "ID de compra requerido" }, { status: 400 })
     }
 
-    const supabase = createClient()
+    // Uso asíncrono de cookies()
+    const cookieStore = await cookies()
+    const supabase = await createClient(cookieStore)
 
     // Buscar el pago asociado a la compra
     const { data, error } = await supabase
@@ -41,7 +44,8 @@ export async function GET(request: Request) {
       fecha: data.fecha,
       descripcion: data.descripcion,
       tarjeta_id: data.tarjeta_id,
-      tarjeta_alias: data.tarjetas ? data.tarjetas.alias : null,
+      // Simplificamos para evitar problemas de tipado, usando tipado explícito
+      tarjeta_alias: data.tarjetas ? (data.tarjetas as any).alias : null,
     }
 
     return NextResponse.json(pagoTransformado)

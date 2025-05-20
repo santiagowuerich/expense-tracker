@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase-server"
+import { cookies } from 'next/headers'
 
 export async function GET(request: Request) {
   try {
@@ -10,7 +11,10 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Missing id" }, { status: 400 })
     }
 
-    const supabase = createClient()
+    // Uso asíncrono de cookies()
+    const cookieStore = await cookies()
+    const supabase = await createClient(cookieStore)
+    
     const { data, error } = await supabase
       .from("compras")
       .select("created_at, costo_unit, cantidad, restante")
