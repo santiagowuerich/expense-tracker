@@ -75,6 +75,12 @@ const esMovimientoVenta = (tipo: string): boolean => {
          tipoLower.includes('salida');
 };
 
+// Nueva función auxiliar para verificar si un movimiento es una compra
+const esMovimientoCompra = (tipo: string): boolean => {
+  const tipoLower = tipo.toLowerCase();
+  return tipoLower === 'entrada_compra' || tipoLower === 'entrada_compra_migrada';
+};
+
 export default function ProductPurchasesDialog({ productoId, productoNombre, children }: ProductPurchasesDialogProps) {
   const [open, setOpen] = useState(false)
   const { toast } = useToast()
@@ -364,6 +370,16 @@ export default function ProductPurchasesDialog({ productoId, productoNombre, chi
                             {formatTipoMovimiento(movimiento.tipo_movimiento) || 'VENTA'}
                             <ExternalLink className="h-3 w-3 ml-1" />
                           </Link>
+                        ) : esMovimientoCompra(movimiento.tipo_movimiento) && movimiento.referencia_id ? (
+                          <PaymentDetailsDialog compraId={movimiento.referencia_id}>
+                            <span 
+                              className="text-blue-600 hover:underline cursor-pointer flex items-center"
+                              title="Ver detalle de compra"
+                            >
+                              {formatTipoMovimiento(movimiento.tipo_movimiento)}
+                              <ExternalLink className="h-3 w-3 ml-1" />
+                            </span>
+                          </PaymentDetailsDialog>
                         ) : (
                           formatTipoMovimiento(movimiento.tipo_movimiento)
                         )}
