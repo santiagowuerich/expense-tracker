@@ -45,8 +45,23 @@ type Categoria = {
   nombre: string
 }
 
-export default function AddProductDialog({ children }: { children?: React.ReactNode }) {
-  const [open, setOpen] = useState(false)
+// Props actualizadas
+interface AddProductDialogProps {
+  children?: React.ReactNode; // Para el trigger interno si no se controla externamente
+  open?: boolean; // Para controlar externamente
+  onOpenChange?: (open: boolean) => void; // Para controlar externamente
+}
+
+export default function AddProductDialog({ children, open: controlledOpen, onOpenChange: controlledOnOpenChange }: AddProductDialogProps) {
+  // Usar estado interno solo si no se controla externamente
+  const [internalOpen, setInternalOpen] = useState(false);
+  
+  // Determinar si el diálogo está controlado externamente
+  const isControlled = controlledOpen !== undefined && controlledOnOpenChange !== undefined;
+
+  const open = isControlled ? controlledOpen : internalOpen;
+  const setOpen = isControlled ? controlledOnOpenChange : setInternalOpen;
+
   const [isSubmitting, setIsSubmitting] = useState(false)
   const { toast } = useToast()
 
@@ -135,7 +150,10 @@ export default function AddProductDialog({ children }: { children?: React.ReactN
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{children || <Button>Agregar producto</Button>}</DialogTrigger>
+      {/* Usar DialogTrigger para que funcione correctamente con el children */}
+      <DialogTrigger asChild>
+        {children || <Button>Agregar producto</Button>}
+      </DialogTrigger>
       <DialogContent className={cn(
         "w-full max-w-md max-h-[90vh] flex flex-col p-0 sm:rounded-lg",
         "sm:max-w-[425px]"

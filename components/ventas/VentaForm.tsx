@@ -7,7 +7,7 @@ import * as z from "zod";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { useCreateVenta, useProductos } from "@/hooks/useVentas";
+import { useCreateVenta, useProductos, useClientes } from "@/hooks/useVentas";
 import { useToast } from "@/components/ui/use-toast";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent } from "@/components/ui/card";
@@ -20,13 +20,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Command,
+  CommandDialog,
   CommandEmpty,
   CommandGroup,
   CommandInput,
   CommandItem,
   CommandList,
+  CommandSeparator,
+  CommandShortcut
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
+import { Cliente } from "@/types/venta";
+import AddProductDialog from "@/components/add-product-dialog";
 
 // Métodos de pago disponibles
 const METODOS_PAGO = [
@@ -41,6 +46,7 @@ const METODOS_PAGO = [
 // Esquema de validación Zod
 const ventaFormSchema = z.object({
   cliente: z.object({
+    id: z.string().optional(),
     nombre: z.string().min(3, { message: "El nombre es requerido" }),
     dni_cuit: z.string().min(7, { message: "El DNI/CUIT es requerido" }),
     direccion: z.string().optional(),
@@ -94,6 +100,16 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
   const { toast } = useToast();
   const createVenta = useCreateVenta();
   const { data: productos, isLoading: isLoadingProductos } = useProductos();
+  
+  // Estados para la búsqueda de clientes
+  const [searchTermCliente, setSearchTermCliente] = useState("");
+  const { data: clientesEncontrados, isLoading: isLoadingClientes, refetch: refetchClientes } = useClientes(searchTermCliente);
+  const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
+  const [isClienteDropdownOpen, setIsClienteDropdownOpen] = useState(false);
+
+  // Estado para el modal de agregar producto
+  const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
+
   const [productosDisponibles, setProductosDisponibles] = useState<any[]>([]);
   const [productosFiltrados, setProductosFiltrados] = useState<any[]>([]);
   const [busqueda, setBusqueda] = useState("");
@@ -113,6 +129,7 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
     resolver: zodResolver(ventaFormSchema),
     defaultValues: {
       cliente: { 
+        id: undefined,
         nombre: "", 
         dni_cuit: "",
         direccion: "", 
@@ -140,6 +157,7 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
 
   const currentItems = form.watch("items");
   const currentPagos = form.watch("pagos") ?? []; 
+  const watchedClienteFields = form.watch("cliente"); // Observar campos del cliente
 
   // Total de productos (sin recargos)
   const totalVentaProductos = currentItems.reduce((sum, item) => {
@@ -526,6 +544,9 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
   };
 
   const agregarProducto = () => {
+    // Esta función ahora NO se usa para el botón principal de "Agregar Producto"
+    // Se mantiene por si se quiere añadir una fila vacía con otro mecanismo.
+    console.log("Función agregarProducto (fila vacía) llamada");
     appendItem({ producto_id: "", cantidad: 1, precio_unitario: 0 });
   };
 
@@ -541,16 +562,173 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
   
   const activePagos = form.watch("pagos") || [];
 
+  // Efecto para limpiar la selección de cliente si se editan manualmente los campos
+  useEffect(() => {
+    if (selectedCliente) {
+      const formCliente = form.getValues("cliente");
+      // Comparamos los campos relevantes. Si alguno es diferente, limpiamos la selección.
+      if (
+        formCliente.nombre !== selectedCliente.nombre ||
+        formCliente.dni_cuit !== selectedCliente.dni_cuit ||
+        (formCliente.direccion || "") !== (selectedCliente.direccion || "") || // Tratar undefined/null como ""
+        (formCliente.ciudad || "") !== (selectedCliente.ciudad || "") ||
+        (formCliente.codigo_postal || "") !== (selectedCliente.codigo_postal || "") ||
+        (formCliente.telefono || "") !== (selectedCliente.telefono || "") ||
+        (formCliente.email || "") !== (selectedCliente.email || "")
+      ) {
+        setSelectedCliente(null);
+        form.setValue("cliente.id", undefined); // Limpiar ID para que se cree uno nuevo
+        // Opcional: resetear el searchTermCliente si queremos que el input de búsqueda se limpie también
+        // setSearchTermCliente(""); 
+      }
+    }
+  }, [watchedClienteFields, selectedCliente, form]);
 
   // --- Renderizado --- 
+  console.log("Current itemFields:", itemFields);
+
   return (
     <>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
           
-          {/* Sección Cliente */}
+          {/* Sección Cliente REESTRUCTURADA */}
           <div>
             <h3 className="text-lg font-medium mb-4">Datos del Cliente</h3>
+
+            {/* Input y Dropdown para BÚSQUEDA DE CLIENTES (MOVIDO ARRIBA) */}
+            <FormItem className="w-full mb-4"> {/* Añadido margen inferior */}
+              <FormLabel>Buscar Cliente Existente (Nombre o DNI/CUIT)</FormLabel>
+              <div className="flex items-center gap-2"> {/* Contenedor para input y botón limpiar */}
+                <Popover open={isClienteDropdownOpen} onOpenChange={setIsClienteDropdownOpen}>
+                  <PopoverTrigger asChild>
+                    <FormControl>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        className={cn(
+                          "w-full justify-between",
+                          !selectedCliente && "text-muted-foreground"
+                        )}
+                      >
+                        {selectedCliente
+                          ? `${selectedCliente.nombre} (${selectedCliente.dni_cuit})`
+                          : "Escriba para buscar o seleccionar un cliente..."}
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </FormControl>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[--radix-popover-trigger-width] max-h-[--radix-popover-content-available-height] p-0">
+                    <Command>
+                      <CommandInput 
+                        placeholder="Buscar por nombre o DNI/CUIT..."
+                        value={searchTermCliente}
+                        onValueChange={(currentValue) => {
+                          setSearchTermCliente(currentValue);
+                          // Si el usuario borra el término después de seleccionar, o escribe algo nuevo
+                          if (selectedCliente && currentValue.trim() === "") {
+                            // No limpiar aquí directamente, el useEffect se encarga si los campos de abajo se modifican.
+                            // Opcionalmente, podríamos limpiar selectedCliente aquí si el input de búsqueda se vacía totalmente
+                          } else if (selectedCliente && currentValue !== `${selectedCliente.nombre} (${selectedCliente.dni_cuit})`) {
+                            // Si escribe algo que no es el cliente seleccionado, permitir nueva búsqueda.
+                            // El useEffect se encargará de limpiar si los campos del form se alteran.
+                          }
+                        }}
+                      />
+                      <CommandList>
+                        {isLoadingClientes && (
+                          <CommandItem disabled>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Buscando...
+                          </CommandItem>
+                        )}
+                        {!isLoadingClientes && clientesEncontrados && clientesEncontrados.length === 0 && searchTermCliente.trim().length > 0 && (
+                          <CommandEmpty>No se encontraron clientes.</CommandEmpty>
+                        )}
+                        {clientesEncontrados && clientesEncontrados.length > 0 && (
+                          <CommandGroup heading="Clientes encontrados">
+                            {clientesEncontrados.map((cliente: Cliente) => (
+                              <CommandItem
+                                key={cliente.id}
+                                value={`${cliente.nombre} ${cliente.dni_cuit} ${cliente.id}`}
+                                onSelect={() => {
+                                  setSelectedCliente(cliente);
+                                  // Actualizar el botón del PopoverTrigger
+                                  setSearchTermCliente(`${cliente.nombre} (${cliente.dni_cuit})`); 
+                                  setIsClienteDropdownOpen(false);
+
+                                  // Autocompletar campos del formulario
+                                  form.setValue("cliente.id", cliente.id, { shouldValidate: true, shouldDirty: true });
+                                  form.setValue("cliente.nombre", cliente.nombre, { shouldValidate: true, shouldDirty: true });
+                                  form.setValue("cliente.dni_cuit", cliente.dni_cuit, { shouldValidate: true, shouldDirty: true });
+                                  form.setValue("cliente.direccion", cliente.direccion || "", { shouldValidate: true, shouldDirty: true });
+                                  form.setValue("cliente.ciudad", cliente.ciudad || "", { shouldValidate: true, shouldDirty: true });
+                                  form.setValue("cliente.codigo_postal", cliente.codigo_postal || "", { shouldValidate: true, shouldDirty: true });
+                                  form.setValue("cliente.telefono", cliente.telefono || "", { shouldValidate: true, shouldDirty: true });
+                                  form.setValue("cliente.email", cliente.email || "", { shouldValidate: true, shouldDirty: true });
+                                }}
+                              >
+                                <Check
+                                  className={cn(
+                                    "mr-2 h-4 w-4",
+                                    selectedCliente?.id === cliente.id ? "opacity-100" : "opacity-0"
+                                  )}
+                                />
+                                <div>
+                                  <p>{cliente.nombre}</p>
+                                  <p className="text-xs text-muted-foreground">{cliente.dni_cuit}</p>
+                                </div>
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        )}
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+                {selectedCliente && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      form.resetField("cliente.id");
+                      form.resetField("cliente.nombre");
+                      form.resetField("cliente.dni_cuit");
+                      form.resetField("cliente.direccion");
+                      form.resetField("cliente.ciudad");
+                      form.resetField("cliente.codigo_postal");
+                      form.resetField("cliente.telefono");
+                      form.resetField("cliente.email");
+                      // Restablecer a valores por defecto del schema para que no queden undefined si eran opcionales
+                      form.setValue("cliente", { 
+                          id: undefined, 
+                          nombre: "", 
+                          dni_cuit: "", 
+                          direccion: "", 
+                          ciudad: "", 
+                          codigo_postal: "", 
+                          telefono: "", 
+                          email: "" 
+                      }, { shouldValidate: true });
+
+                      setSelectedCliente(null);
+                      setSearchTermCliente(""); // Limpiar el texto del input de búsqueda/botón
+                      setIsClienteDropdownOpen(false);
+                    }}
+                    className="ml-2" // Margen para separar del popover
+                  >
+                    Limpiar / Nuevo
+                  </Button>
+                )}
+              </div>
+              <FormDescription className="mt-1"> {/* Margen superior para descripción */}
+                Si el cliente no existe o desea ingresar uno nuevo, complete los campos manualmente.
+              </FormDescription>
+            </FormItem>
+            {/* FIN SECCIÓN DE BÚSQUEDA DE CLIENTES */}
+
+            {/* Campos ÚNICOS de datos del cliente */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
@@ -649,7 +827,11 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
                   </FormItem>
                 )}
               />
+              {/* El FormField de DNI/CUIT del Cliente que estaba aquí suelto ya no es necesario */}
             </div>
+            
+            {/* El Popover de búsqueda y la segunda grilla de campos de cliente han sido eliminados de aquí y reubicados/consolidados arriba */}
+
           </div>
 
           <Separator className="my-4" />
@@ -658,7 +840,15 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
           <div>
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-medium">Productos</h3>
-              <Button type="button" onClick={agregarProducto} variant="outline" size="sm">Agregar Producto</Button>
+              {/* Botón modificado para abrir el modal */}
+              <Button 
+                type="button" 
+                onClick={() => setIsAddProductModalOpen(true)} 
+                variant="outline" 
+                size="sm"
+              >
+                Agregar Producto
+              </Button>
             </div>
 
             {isLoadingProductos ? (
@@ -1104,6 +1294,15 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
           </div>
         </form>
       </Form>
+
+      {/* Renderizar el AddProductDialog */}
+      <AddProductDialog 
+        open={isAddProductModalOpen} 
+        onOpenChange={setIsAddProductModalOpen} 
+      >
+        {/* Este botón estará escondido, pero necesita existir para que DialogTrigger funcione */}
+        <button style={{ display: 'none' }} />
+      </AddProductDialog>
 
       <ConfirmationPdfModal 
           open={isPdfModalOpen} 

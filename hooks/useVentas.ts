@@ -3,19 +3,30 @@ import { createClient } from '@/lib/supabase-browser';
 import type { Cliente, CrearVentaParams, Venta, VentaItem, VentaPago } from '@/types/venta';
 import { endOfDay } from 'date-fns'; // Importar endOfDay
 
-// Hook para obtener lista de clientes
-export function useClientes() {
-  return useQuery({
-    queryKey: ['clientes'],
+// Hook para obtener lista de clientes (modificado para búsqueda)
+export function useClientes(searchTerm?: string) {
+  return useQuery<Cliente[], Error>({
+    queryKey: ['clientes', searchTerm],
     queryFn: async () => {
       const supabase = createClient();
-      const { data, error } = await supabase
+      let query = supabase
         .from('clientes')
         .select('*')
         .order('nombre', { ascending: true });
 
-      if (error) throw error;
-      return (data || []) as any as Cliente[];
+      if (searchTerm && searchTerm.trim() !== '') {
+        const cleanedSearchTerm = searchTerm.trim();
+        // Filtrar por nombre o dni_cuit usando ilike
+        query = query.or(`nombre.ilike.%${cleanedSearchTerm}%,dni_cuit.ilike.%${cleanedSearchTerm}%`);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        console.error("Error en Supabase (useClientes):", error);
+        throw new Error(error.message);
+      }
+      return (data || []) as Cliente[];
     }
   });
 }
