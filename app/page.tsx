@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react"
+import { useState, Suspense } from "react"
 import { Button } from "@/components/ui/button"
 import { PlusCircle, BarChart3, CreditCard, Package, FileBarChart, History, UserCircle, ShoppingCart } from "lucide-react"
 import Link from "next/link"
@@ -8,6 +8,7 @@ import CompraConTarjetaDialog from "@/components/compra-con-tarjeta-dialog"
 import AddCardDialog from "@/components/add-card-dialog"
 import BusinessProfileModal from "@/components/business-profile-modal"
 import { RealizarVentaButton } from "@/components/ventas/RealizarVentaButton"
+import RealizarVentaButtonEsqueleto from "@/components/ventas/realizar-venta-button-esqueleto"
 import { UserNav } from "@/components/user-nav"
 import { useUser } from "@/lib/user-provider"
 
@@ -39,11 +40,13 @@ export default function Home() {
             </Button>
           </CompraConTarjetaDialog>
 
-          <RealizarVentaButton className="w-full h-16 text-lg rounded-2xl">
-            {/* Si RealizarVentaButton no acepta children o necesita un ícono específico, ajustar aquí */}
-            {/* Por ejemplo, si el botón ya tiene su propio ícono y texto: */}
-            {/* <ShoppingCart className="mr-2 h-5 w-5" /> Realizar Venta */}
-          </RealizarVentaButton>
+          <Suspense fallback={<Button size="lg" className="w-full h-16 text-lg rounded-2xl"><ShoppingCart className="mr-2 h-5 w-5" />Cargando...</Button>}>
+            <RealizarVentaButton className="w-full h-16 text-lg rounded-2xl">
+              {/* Si RealizarVentaButton no acepta children o necesita un ícono específico, ajustar aquí */}
+              {/* Por ejemplo, si el botón ya tiene su propio ícono y texto: */}
+              {/* <ShoppingCart className="mr-2 h-5 w-5" /> Realizar Venta */}
+            </RealizarVentaButton>
+          </Suspense>
 
           <Link href="/resumen" className="w-full">
             <Button size="lg" variant="outline" className="w-full h-16 text-lg rounded-2xl">
