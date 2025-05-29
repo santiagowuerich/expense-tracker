@@ -477,6 +477,15 @@ export default function InventarioPage() {
                       variant="outline"
                       size="icon"
                       className="p-2 h-8 w-8"
+                      title="Ajustar Stock Manualmente"
+                      onClick={() => handleOpenAjusteModal(producto)}
+                    >
+                      <SlidersHorizontal className="h-4 w-4 text-blue-600" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="p-2 h-8 w-8"
                       aria-label="Disminuir stock"
                       onClick={() => updateStockMutation.mutate({ productoId: producto.id, incremento: -1 })}
                       disabled={updateStockMutation.isPending || producto.stock <= 0}

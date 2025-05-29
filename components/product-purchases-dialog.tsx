@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Eye, PackageSearch, ShoppingCart, TrendingUp, History, ExternalLink } from "lucide-react"
+import { Eye, PackageSearch, ShoppingCart, TrendingUp, History, ExternalLink, SlidersHorizontal } from "lucide-react"
 import { createClient } from "@/lib/supabase-browser"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
@@ -25,6 +25,9 @@ import PaymentDetailsDialog from "./payment-details-dialog"
 import type React from "react"
 import { useMovimientosStockQuery } from "@/lib/queries"
 import type { MovimientoStock, ProductoInventario } from "@/types/inventario.types"
+import { Card, CardContent } from "@/components/ui/card"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { cn } from "@/lib/utils"
 
 type ProductPurchase = {
   id: string
@@ -237,9 +240,9 @@ export default function ProductPurchasesDialog({ productoId, productoNombre, chi
 
         <Tabs defaultValue="compras" className="w-full">
           <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="compras"><ShoppingCart className="mr-2 h-4 w-4 inline-block" />Historial de Compras</TabsTrigger>
-            <TabsTrigger value="precios"><TrendingUp className="mr-2 h-4 w-4 inline-block" />Historial de Precios</TabsTrigger>
-            <TabsTrigger value="stock"><History className="mr-2 h-4 w-4 inline-block" />Historial de Stock</TabsTrigger>
+            <TabsTrigger value="compras"><ShoppingCart className="mr-2 h-4 w-4 inline-block" />Compras</TabsTrigger>
+            <TabsTrigger value="precios"><TrendingUp className="mr-2 h-4 w-4 inline-block" />Precio</TabsTrigger>
+            <TabsTrigger value="stock"><History className="mr-2 h-4 w-4 inline-block" />Stock</TabsTrigger>
           </TabsList>
 
           <TabsContent value="compras" className="max-h-[60vh] overflow-y-auto">
@@ -252,36 +255,79 @@ export default function ProductPurchasesDialog({ productoId, productoNombre, chi
             ) : errorCompras ? (
               <div className="text-center py-8 text-destructive">Error al cargar las compras.</div>
             ) : compras && compras.length > 0 ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead className="text-right">Costo unitario</TableHead>
-                    <TableHead className="text-right">Cantidad inicial</TableHead>
-                    <TableHead className="text-right">Restante</TableHead>
-                    <TableHead className="text-right">Total compra</TableHead>
-                    <TableHead className="text-center">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {compras.map((compra: ProductPurchase) => (
-                    <TableRow key={compra.id}>
-                      <TableCell>{format(parseISO(compra.created_at), "d MMM yyyy, HH:mm", { locale: es })}</TableCell>
-                      <TableCell className="text-right">${compra.costo_unit.toFixed(2)}</TableCell>
-                      <TableCell className="text-right">{compra.cantidad}</TableCell>
-                      <TableCell className="text-right">{compra.restante}</TableCell>
-                      <TableCell className="text-right font-medium">
-                        ${(compra.cantidad * compra.costo_unit).toFixed(2)}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center justify-center space-x-2">
-                          <PaymentDetailsDialog compraId={compra.id} />
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <>
+                {/* Vista para escritorio */}
+                <div className="hidden sm:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Fecha</TableHead>
+                        <TableHead className="text-right">Costo unitario</TableHead>
+                        <TableHead className="text-right">Cantidad inicial</TableHead>
+                        <TableHead className="text-right">Restante</TableHead>
+                        <TableHead className="text-right">Total compra</TableHead>
+                        <TableHead className="text-center">Acciones</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {compras.map((compra: ProductPurchase) => (
+                        <TableRow key={compra.id}>
+                          <TableCell>{format(parseISO(compra.created_at), "d MMM yyyy, HH:mm", { locale: es })}</TableCell>
+                          <TableCell className="text-right">${compra.costo_unit.toFixed(2)}</TableCell>
+                          <TableCell className="text-right">{compra.cantidad}</TableCell>
+                          <TableCell className="text-right">{compra.restante}</TableCell>
+                          <TableCell className="text-right font-medium">
+                            ${(compra.cantidad * compra.costo_unit).toFixed(2)}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center justify-center space-x-2">
+                              <PaymentDetailsDialog compraId={compra.id} />
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                
+                {/* Vista para móvil */}
+                <div className="sm:hidden space-y-3">
+                  <ScrollArea className="h-[60vh]">
+                    {compras.map((compra) => (
+                      <Card key={compra.id} className="mb-3">
+                        <CardContent className="p-4">
+                          <div className="flex justify-between items-center mb-2">
+                            <div className="text-sm text-muted-foreground">
+                              {format(parseISO(compra.created_at), "d MMM yyyy, HH:mm", { locale: es })}
+                            </div>
+                            <PaymentDetailsDialog compraId={compra.id}>
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                            </PaymentDetailsDialog>
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-1 text-sm">
+                            <div className="text-muted-foreground">Costo unitario:</div>
+                            <div className="text-right font-medium">${compra.costo_unit.toFixed(2)}</div>
+                            
+                            <div className="text-muted-foreground">Cantidad:</div>
+                            <div className="text-right">{compra.cantidad}</div>
+                            
+                            <div className="text-muted-foreground">Restante:</div>
+                            <div className="text-right">{compra.restante}</div>
+                            
+                            <div className="text-muted-foreground">Total:</div>
+                            <div className="text-right font-bold">
+                              ${(compra.cantidad * compra.costo_unit).toFixed(2)}
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </ScrollArea>
+                </div>
+              </>
             ) : (
               <div className="text-center py-8 text-muted-foreground">Sin compras registradas para este producto.</div>
             )}
@@ -297,36 +343,79 @@ export default function ProductPurchasesDialog({ productoId, productoNombre, chi
             ) : errorHistorial ? (
               <div className="text-center py-8 text-destructive">Error al cargar el historial de precios.</div>
             ) : historialPrecios && historialPrecios.length > 0 ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead className="text-right">Precio</TableHead>
-                    <TableHead>Referencia Compra</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {historialPrecios.map((precio: PriceHistory) => (
-                    <TableRow key={precio.id}>
-                      <TableCell>{format(parseISO(precio.created_at), "d MMM yyyy, HH:mm", { locale: es })}</TableCell>
-                      <TableCell>
-                        <Badge variant={precio.tipo === "venta" ? "default" : "secondary"}>
-                          {precio.tipo === "venta" ? "Precio Venta" : "Precio Costo"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">${precio.precio.toFixed(2)}</TableCell>
-                      <TableCell>
-                        {precio.compra_id ? (
-                          <PaymentDetailsDialog compraId={precio.compra_id} />
-                          ) : (
-                          <span className="text-muted-foreground text-sm">N/A</span>
-                          )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              <>
+                {/* Vista para escritorio */}
+                <div className="hidden sm:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Fecha</TableHead>
+                        <TableHead>Tipo</TableHead>
+                        <TableHead className="text-right">Precio</TableHead>
+                        <TableHead>Referencia Compra</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {historialPrecios.map((precio: PriceHistory) => (
+                        <TableRow key={precio.id}>
+                          <TableCell>{format(parseISO(precio.created_at), "d MMM yyyy, HH:mm", { locale: es })}</TableCell>
+                          <TableCell>
+                            <Badge variant={precio.tipo === "venta" ? "default" : "secondary"}>
+                              {precio.tipo === "venta" ? "Precio Venta" : "Precio Costo"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">${precio.precio.toFixed(2)}</TableCell>
+                          <TableCell>
+                            {precio.compra_id ? (
+                              <PaymentDetailsDialog compraId={precio.compra_id} />
+                              ) : (
+                              <span className="text-muted-foreground text-sm">N/A</span>
+                              )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                
+                {/* Vista para móvil */}
+                <div className="sm:hidden space-y-3">
+                  <ScrollArea className="h-[60vh]">
+                    {historialPrecios.map((precio) => (
+                      <Card key={precio.id} className="mb-3">
+                        <CardContent className="p-4">
+                          <div className="flex justify-between items-center mb-2">
+                            <div className="text-sm text-muted-foreground">
+                              {format(parseISO(precio.created_at), "d MMM yyyy, HH:mm", { locale: es })}
+                            </div>
+                            <Badge variant={precio.tipo === "venta" ? "default" : "secondary"}>
+                              {precio.tipo === "venta" ? "Venta" : "Costo"}
+                            </Badge>
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-1 text-sm">
+                            <div className="text-muted-foreground">Precio:</div>
+                            <div className="text-right font-medium">${precio.precio.toFixed(2)}</div>
+                            
+                            {precio.compra_id && (
+                              <>
+                                <div className="text-muted-foreground">Ref. Compra:</div>
+                                <div className="text-right">
+                                  <PaymentDetailsDialog compraId={precio.compra_id}>
+                                    <Button variant="link" size="sm" className="p-0 h-auto">
+                                      Ver
+                                    </Button>
+                                  </PaymentDetailsDialog>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </ScrollArea>
+                </div>
+              </>
             ) : (
               <div className="text-center py-8 text-muted-foreground">Sin historial de precios para este producto.</div>
             )}
@@ -342,69 +431,153 @@ export default function ProductPurchasesDialog({ productoId, productoNombre, chi
                 Error al cargar el historial de stock: {errorMovimientosStock.message}
               </div>
             ) : movimientosStock && movimientosStock.length > 0 ? (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead className="text-right">Cantidad</TableHead>
-                    <TableHead className="text-right">Stock Anterior</TableHead>
-                    <TableHead className="text-right">Stock Nuevo</TableHead>
-                    <TableHead>Notas/Ref.</TableHead>
-                    <TableHead>Usuario</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {movimientosStock.map((movimiento) => (
-                    <TableRow key={movimiento.id}>
-                      <TableCell>
-                        {movimiento.fecha ? format(parseISO(movimiento.fecha), "dd/MM/yyyy HH:mm", { locale: es }) : "N/A"}
-                      </TableCell>
-                      <TableCell>
-                        {esMovimientoVenta(movimiento.tipo_movimiento) && movimiento.referencia_id ? (
-                          <Link 
-                            href={`/ventas/${movimiento.referencia_id}`} 
-                            className="text-blue-600 hover:underline flex items-center"
-                            title="Ver detalle de venta"
-                          >
-                            {formatTipoMovimiento(movimiento.tipo_movimiento) || 'VENTA'}
-                            <ExternalLink className="h-3 w-3 ml-1" />
-                          </Link>
-                        ) : esMovimientoCompra(movimiento.tipo_movimiento) && movimiento.referencia_id ? (
-                          <PaymentDetailsDialog compraId={movimiento.referencia_id}>
-                            <span 
-                              className="text-blue-600 hover:underline cursor-pointer flex items-center"
-                              title="Ver detalle de compra"
+              <>
+                {/* Vista para escritorio */}
+                <div className="hidden sm:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Fecha</TableHead>
+                        <TableHead>Tipo</TableHead>
+                        <TableHead className="text-right">Cantidad</TableHead>
+                        <TableHead className="text-right">Stock Anterior</TableHead>
+                        <TableHead className="text-right">Stock Nuevo</TableHead>
+                        <TableHead>Notas/Ref.</TableHead>
+                        <TableHead>Usuario</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {movimientosStock.map((movimiento) => (
+                        <TableRow key={movimiento.id}>
+                          <TableCell>
+                            {movimiento.fecha ? format(parseISO(movimiento.fecha), "dd/MM/yyyy HH:mm", { locale: es }) : "N/A"}
+                          </TableCell>
+                          <TableCell>
+                            {esMovimientoVenta(movimiento.tipo_movimiento) && movimiento.referencia_id ? (
+                              <Link 
+                                href={`/ventas/${movimiento.referencia_id}`} 
+                                className="text-blue-600 hover:underline flex items-center"
+                                title="Ver detalle de venta"
+                              >
+                                {formatTipoMovimiento(movimiento.tipo_movimiento) || 'VENTA'}
+                                <ExternalLink className="h-3 w-3 ml-1" />
+                              </Link>
+                            ) : esMovimientoCompra(movimiento.tipo_movimiento) && movimiento.referencia_id ? (
+                              <PaymentDetailsDialog compraId={movimiento.referencia_id}>
+                                <span 
+                                  className="text-blue-600 hover:underline cursor-pointer flex items-center"
+                                  title="Ver detalle de compra"
+                                >
+                                  {formatTipoMovimiento(movimiento.tipo_movimiento)}
+                                  <ExternalLink className="h-3 w-3 ml-1" />
+                                </span>
+                              </PaymentDetailsDialog>
+                            ) : (
+                              formatTipoMovimiento(movimiento.tipo_movimiento)
+                            )}
+                          </TableCell>
+                          <TableCell className={`text-right ${movimiento.cantidad < 0 ? 'text-red-500' : 'text-green-500'}`}>
+                            {movimiento.cantidad}
+                          </TableCell>
+                          <TableCell className="text-right">{movimiento.stock_anterior}</TableCell>
+                          <TableCell className="text-right">{movimiento.stock_nuevo}</TableCell>
+                          <TableCell>
+                            {movimiento.tipo_movimiento === 'salida_venta' && movimiento.referencia_id ? (
+                              <>Venta: {movimiento.referencia_id?.substring(0,8)}...</>
+                            ) : movimiento.notas ? (
+                              movimiento.notas.length > 30 ? `${movimiento.notas.substring(0, 27)}...` : movimiento.notas
+                            ) : movimiento.referencia_id ? (
+                              <>Ref: {movimiento.referencia_id?.substring(0,8)}...</>
+                            ) : (
+                              <>{/* No mostrar nada si no hay notas ni ref relevante */}</>
+                            )}
+                          </TableCell>
+                          <TableCell>{movimiento.usuario_email || (movimiento.creado_por ? movimiento.creado_por.substring(0,8)+'...' : 'Sistema')}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                
+                {/* Vista para móvil */}
+                <div className="sm:hidden space-y-3">
+                  <ScrollArea className="h-[60vh]">
+                    {movimientosStock.map((movimiento) => (
+                      <Card key={movimiento.id} className="mb-3">
+                        <CardContent className="p-4">
+                          <div className="flex justify-between items-center mb-2">
+                            <div className="text-sm text-muted-foreground">
+                              {movimiento.fecha ? format(parseISO(movimiento.fecha), "dd/MM/yyyy HH:mm", { locale: es }) : "N/A"}
+                            </div>
+                            <Badge 
+                              variant={movimiento.cantidad < 0 ? "destructive" : "default"}
+                              className={cn(
+                                movimiento.cantidad < 0 ? "bg-red-100 text-red-800 hover:bg-red-100" : "bg-green-100 text-green-800 hover:bg-green-100",
+                                "rounded-full"
+                              )}
                             >
-                              {formatTipoMovimiento(movimiento.tipo_movimiento)}
-                              <ExternalLink className="h-3 w-3 ml-1" />
-                            </span>
-                          </PaymentDetailsDialog>
-                        ) : (
-                          formatTipoMovimiento(movimiento.tipo_movimiento)
-                        )}
-                      </TableCell>
-                      <TableCell className={`text-right ${movimiento.cantidad < 0 ? 'text-red-500' : 'text-green-500'}`}>
-                        {movimiento.cantidad}
-                      </TableCell>
-                      <TableCell className="text-right">{movimiento.stock_anterior}</TableCell>
-                      <TableCell className="text-right">{movimiento.stock_nuevo}</TableCell>
-                      <TableCell>
-                        {movimiento.tipo_movimiento === 'salida_venta' && movimiento.referencia_id ? (
-                          <>Venta: {movimiento.referencia_id?.substring(0,8)}...</>
-                        ) : movimiento.notas ? (
-                          movimiento.notas.length > 30 ? `${movimiento.notas.substring(0, 27)}...` : movimiento.notas
-                        ) : movimiento.referencia_id ? (
-                          <>Ref: {movimiento.referencia_id?.substring(0,8)}...</>
-                        ) : (
-                          <>{/* No mostrar nada si no hay notas ni ref relevante */}</>
-                        )}
-                      </TableCell>
-                      <TableCell>{movimiento.usuario_email || (movimiento.creado_por ? movimiento.creado_por.substring(0,8)+'...' : 'Sistema')}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                              {movimiento.cantidad}
+                            </Badge>
+                          </div>
+                          
+                          <div className="mb-2">
+                            <div className="font-medium">
+                              {esMovimientoVenta(movimiento.tipo_movimiento) && movimiento.referencia_id ? (
+                                <Link 
+                                  href={`/ventas/${movimiento.referencia_id}`} 
+                                  className="text-blue-600 hover:underline flex items-center"
+                                  title="Ver detalle de venta"
+                                >
+                                  {formatTipoMovimiento(movimiento.tipo_movimiento) || 'VENTA'}
+                                  <ExternalLink className="h-3 w-3 ml-1" />
+                                </Link>
+                              ) : esMovimientoCompra(movimiento.tipo_movimiento) && movimiento.referencia_id ? (
+                                <PaymentDetailsDialog compraId={movimiento.referencia_id}>
+                                  <span 
+                                    className="text-blue-600 hover:underline cursor-pointer flex items-center"
+                                    title="Ver detalle de compra"
+                                  >
+                                    {formatTipoMovimiento(movimiento.tipo_movimiento)}
+                                    <ExternalLink className="h-3 w-3 ml-1" />
+                                  </span>
+                                </PaymentDetailsDialog>
+                              ) : (
+                                formatTipoMovimiento(movimiento.tipo_movimiento)
+                              )}
+                            </div>
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-1 text-sm">
+                            <div className="text-muted-foreground">Stock Anterior:</div>
+                            <div className="text-right">{movimiento.stock_anterior}</div>
+                            
+                            <div className="text-muted-foreground">Stock Nuevo:</div>
+                            <div className="text-right">{movimiento.stock_nuevo}</div>
+                            
+                            {(movimiento.notas || movimiento.referencia_id) && (
+                              <>
+                                <div className="text-muted-foreground">Notas/Ref:</div>
+                                <div className="text-right">
+                                  {movimiento.tipo_movimiento === 'salida_venta' && movimiento.referencia_id ? (
+                                    <>Venta: {movimiento.referencia_id?.substring(0,8)}...</>
+                                  ) : movimiento.notas ? (
+                                    movimiento.notas.length > 20 ? `${movimiento.notas.substring(0, 17)}...` : movimiento.notas
+                                  ) : movimiento.referencia_id ? (
+                                    <>Ref: {movimiento.referencia_id?.substring(0,8)}...</>
+                                  ) : null}
+                                </div>
+                              </>
+                            )}
+                            
+                            <div className="text-muted-foreground">Usuario:</div>
+                            <div className="text-right">{movimiento.usuario_email || (movimiento.creado_por ? movimiento.creado_por.substring(0,8)+'...' : 'Sistema')}</div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </ScrollArea>
+                </div>
+              </>
             ) : (
               <div className="text-center py-8 text-muted-foreground">No hay movimientos de stock para este producto.</div>
             )}
