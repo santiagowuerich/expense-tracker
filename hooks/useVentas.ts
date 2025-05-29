@@ -26,7 +26,19 @@ export function useClientes(searchTerm?: string) {
         console.error("Error en Supabase (useClientes):", error);
         throw new Error(error.message);
       }
-      return (data || []) as Cliente[];
+      
+      // Filtrar clientes duplicados por dni_cuit
+      const clientesFiltrados: Cliente[] = [];
+      const dniCuitSet = new Set<string>();
+      
+      (data || []).forEach(cliente => {
+        if (!dniCuitSet.has(cliente.dni_cuit)) {
+          dniCuitSet.add(cliente.dni_cuit);
+          clientesFiltrados.push(cliente);
+        }
+      });
+      
+      return clientesFiltrados as Cliente[];
     }
   });
 }
@@ -45,6 +57,76 @@ export function useProductos() {
       if (error) throw error;
       return data || [];
     }
+  });
+}
+
+// Hook para obtener ventas por cliente
+export function useVentasPorCliente(clienteId: string | null) {
+  return useQuery<Venta[], Error>({
+    queryKey: ['ventas_cliente', clienteId],
+    queryFn: async () => {
+      if (!clienteId) return [];
+      
+      const supabase = createClient();
+      
+      // Primero obtenemos el cliente para conocer su DNI/CUIT
+      const { data: clienteData, error: clienteError } = await supabase
+        .from('clientes')
+        .select('dni_cuit')
+        .eq('id', clienteId)
+        .single();
+        
+      if (clienteError) {
+        console.error('Error al obtener datos del cliente:', clienteError);
+        throw new Error(clienteError.message);
+      }
+      
+      if (!clienteData || !clienteData.dni_cuit) {
+        console.error('Cliente no encontrado o sin DNI/CUIT');
+        return [];
+      }
+      
+      // Luego obtenemos todos los clientes con ese mismo DNI/CUIT
+      const { data: clientesIds, error: clientesError } = await supabase
+        .from('clientes')
+        .select('id')
+        .eq('dni_cuit', clienteData.dni_cuit);
+        
+      if (clientesError) {
+        console.error('Error al obtener IDs de clientes con mismo DNI/CUIT:', clientesError);
+        throw new Error(clientesError.message);
+      }
+      
+      if (!clientesIds || clientesIds.length === 0) {
+        return [];
+      }
+      
+      // Extraemos los IDs para la consulta IN
+      const ids = clientesIds.map(c => c.id);
+      
+      // Ahora buscamos ventas para todos los IDs de clientes con el mismo DNI/CUIT
+      const { data: ventasData, error: ventasError } = await supabase
+        .from('ventas')
+        .select('*, clientes(*)')
+        .in('cliente_id', ids)
+        .order('fecha', { ascending: false });
+        
+      if (ventasError) {
+        console.error('Error al obtener ventas de los clientes:', ventasError);
+        throw new Error(ventasError.message);
+      }
+      
+      return (ventasData || []).map((venta: any) => ({
+        id: venta.id,
+        cliente_id: venta.cliente_id,
+        fecha: venta.fecha,
+        total: venta.total,
+        created_at: venta.created_at,
+        cliente: venta.clientes as any as Cliente,
+        pagos: venta.pagos || [],
+      })) as Venta[];
+    },
+    enabled: !!clienteId
   });
 }
 

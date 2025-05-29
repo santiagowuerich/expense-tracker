@@ -7,7 +7,8 @@ import * as z from "zod";
 import { Button } from "@/components/ui/button";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { useCreateVenta, useProductos, useClientes } from "@/hooks/useVentas";
+import { useCreateVenta, useProductos } from "@/hooks/useVentas";
+import { useClientes, useClienteById } from "@/hooks/useClientes";
 import { useToast } from "@/components/ui/use-toast";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent } from "@/components/ui/card";
@@ -96,7 +97,7 @@ const ventaFormSchema = z.object({
 
 type VentaFormValues = z.infer<typeof ventaFormSchema>;
 
-export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
+export function VentaForm({ onSuccess, clienteId }: { onSuccess: () => void; clienteId?: string }) {
   const { toast } = useToast();
   const createVenta = useCreateVenta();
   const { data: productos, isLoading: isLoadingProductos } = useProductos();
@@ -106,6 +107,9 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
   const { data: clientesEncontrados, isLoading: isLoadingClientes, refetch: refetchClientes } = useClientes(searchTermCliente);
   const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
   const [isClienteDropdownOpen, setIsClienteDropdownOpen] = useState(false);
+
+  // Cargar cliente si se proporciona un clienteId
+  const { data: clienteSeleccionado, isLoading: isLoadingClienteSeleccionado } = useClienteById(clienteId || null);
 
   // Estado para el modal de agregar producto
   const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
@@ -562,6 +566,28 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
   
   const activePagos = form.watch("pagos") || [];
 
+  // Cargar el cliente seleccionado cuando esté disponible
+  useEffect(() => {
+    if (clienteSeleccionado && !selectedCliente) {
+      setSelectedCliente(clienteSeleccionado);
+      
+      // Actualizar el formulario con los datos del cliente
+      form.setValue("cliente.id", clienteSeleccionado.id, { shouldValidate: true, shouldDirty: true });
+      form.setValue("cliente.nombre", clienteSeleccionado.nombre, { shouldValidate: true, shouldDirty: true });
+      form.setValue("cliente.dni_cuit", clienteSeleccionado.dni_cuit, { shouldValidate: true, shouldDirty: true });
+      form.setValue("cliente.direccion", clienteSeleccionado.direccion || "", { shouldValidate: true, shouldDirty: true });
+      form.setValue("cliente.ciudad", clienteSeleccionado.ciudad || "", { shouldValidate: true, shouldDirty: true });
+      form.setValue("cliente.codigo_postal", clienteSeleccionado.codigo_postal || "", { shouldValidate: true, shouldDirty: true });
+      form.setValue("cliente.telefono", clienteSeleccionado.telefono || "", { shouldValidate: true, shouldDirty: true });
+      form.setValue("cliente.email", clienteSeleccionado.email || "", { shouldValidate: true, shouldDirty: true });
+      
+      // Actualizar el término de búsqueda para mostrar en el botón
+      if (clienteSeleccionado.nombre && clienteSeleccionado.dni_cuit) {
+        setSearchTermCliente(`${clienteSeleccionado.nombre} (${clienteSeleccionado.dni_cuit})`);
+      }
+    }
+  }, [clienteSeleccionado, form, selectedCliente]);
+
   // Efecto para limpiar la selección de cliente si se editan manualmente los campos
   useEffect(() => {
     if (selectedCliente) {
@@ -692,16 +718,9 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
                     variant="ghost"
                     size="sm"
                     onClick={() => {
-                      form.resetField("cliente.id");
-                      form.resetField("cliente.nombre");
-                      form.resetField("cliente.dni_cuit");
-                      form.resetField("cliente.direccion");
-                      form.resetField("cliente.ciudad");
-                      form.resetField("cliente.codigo_postal");
-                      form.resetField("cliente.telefono");
-                      form.resetField("cliente.email");
-                      // Restablecer a valores por defecto del schema para que no queden undefined si eran opcionales
-                      form.setValue("cliente", { 
+                      // Limpiar formulario completamente
+                      form.reset({
+                        cliente: { 
                           id: undefined, 
                           nombre: "", 
                           dni_cuit: "", 
@@ -710,13 +729,26 @@ export function VentaForm({ onSuccess }: { onSuccess: () => void }) {
                           codigo_postal: "", 
                           telefono: "", 
                           email: "" 
-                      }, { shouldValidate: true });
-
+                        },
+                        items: [{ producto_id: "", cantidad: 1, precio_unitario: 0 }],
+                        pagos: [],
+                        mensajeInterno: "",
+                        mensajeExterno: "",
+                      });
+                      
+                      // Limpiar estado seleccionado
                       setSelectedCliente(null);
-                      setSearchTermCliente(""); // Limpiar el texto del input de búsqueda/botón
+                      setSearchTermCliente("");
                       setIsClienteDropdownOpen(false);
+                      
+                      // NO cerrar el diálogo, solo limpiar los datos
+                      // Notificar que se ha limpiado el cliente
+                      toast({
+                        title: "Cliente eliminado",
+                        description: "Se han limpiado los datos del cliente preseleccionado."
+                      });
                     }}
-                    className="ml-2" // Margen para separar del popover
+                    className="ml-2"
                   >
                     Limpiar / Nuevo
                   </Button>

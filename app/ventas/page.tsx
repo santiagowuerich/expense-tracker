@@ -6,7 +6,7 @@ import { format, startOfDay, endOfDay, startOfMonth, endOfMonth } from "date-fns
 import { es } from "date-fns/locale";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Loader2, CalendarIcon, Search, Trash2 } from "lucide-react";
+import { ArrowLeft, Loader2, CalendarIcon, Search, Trash2, Users } from "lucide-react";
 import type { DateRange } from "react-day-picker";
 
 import { useVentas } from "@/hooks/useVentas";
@@ -88,6 +88,13 @@ export default function HistorialVentasPage() {
         </div>
         
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => router.push('/clientes')}
+          >
+            <Users className="mr-2 h-4 w-4" />
+            Ver Clientes
+          </Button>
           <Button
             variant="outline"
             onClick={() => router.push('/ventas/eliminar-ventas')}
