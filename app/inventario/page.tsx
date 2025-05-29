@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"; // Import useMutation and useQueryClient
 import {
   ArrowLeft,
@@ -42,6 +42,7 @@ import CompraConTarjetaDialog from "@/components/compra-con-tarjeta-dialog";
 import { useToast } from "@/components/ui/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { RealizarVentaButton } from "@/components/ventas/RealizarVentaButton";
+import RealizarVentaButtonEsqueleto from "@/components/ventas/realizar-venta-button-esqueleto";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import AjusteStockModal from "@/components/inventario/AjusteStockModal";
@@ -354,7 +355,9 @@ export default function InventarioPage() {
             Eliminar Productos
           </Button>
           <div className="col-span-2">
-            <RealizarVentaButton className="w-full h-10 flex items-center justify-center" />
+            <Suspense fallback={<RealizarVentaButtonEsqueleto />}>
+              <RealizarVentaButton className="w-full h-10 flex items-center justify-center" />
+            </Suspense>
           </div>
         </div>
         
@@ -376,7 +379,9 @@ export default function InventarioPage() {
               Agregar producto
             </Button>
           </AddProductDialog>
-          <RealizarVentaButton />
+          <Suspense fallback={<RealizarVentaButtonEsqueleto />}>
+            <RealizarVentaButton />
+          </Suspense>
           <Button 
             variant="destructive"
             size="sm"
